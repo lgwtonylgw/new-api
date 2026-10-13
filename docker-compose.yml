@@ -25,11 +25,11 @@ services:
       - ./data:/data
       - ./logs:/app/logs
     environment:
-      - SQL_DSN=root:${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}@tcp(mysql:3306)/new-api
+      - SQL_DSN=root:eLbeL0xljYLasfekkxC8V25FDj9U35-d@tcp(mysql:3306)/new-api
 #      - LOG_SQL_DSN=postgresql://root:123456@postgres:5432/new-api-log # OPTIONAL: If you want a separate database for logging, uncomment and set this
 #      - LOG_SQL_DSN=clickhouse://default:123456@clickhouse:9000/new_api_logs # OPTIONAL: Use ClickHouse for logs only; also uncomment clickhouse in depends_on and the clickhouse service below
 #      - LOG_SQL_CLICKHOUSE_TTL_DAYS=0 # OPTIONAL: ClickHouse log retention days. Unset or 0 disables automatic deletion; set to e.g. 30 to keep 30 days
-      - REDIS_CONN_STRING=redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}@redis:6379
+      - REDIS_CONN_STRING=redis://:ummKzsb-qSR2AJKJiGS5LbitIMrLPdcB@redis:6379
       - TZ=Asia/Shanghai
       - ERROR_LOG_ENABLED=true # 是否启用错误日志记录 (Whether to enable error log recording)
       - BATCH_UPDATE_ENABLED=true  # 是否启用批量更新 (Whether to enable batch update)
@@ -68,7 +68,7 @@ services:
     image: redis:latest
     container_name: redis
     restart: always
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}"]
+    command: ["redis-server", "--requirepass", "ummKzsb-qSR2AJKJiGS5LbitIMrLPdcB"]
     networks:
       - new-api-network
 
@@ -92,7 +92,7 @@ services:
     container_name: mysql
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: eLbeL0xljYLasfekkxC8V25FDj9U35-d
       MYSQL_DATABASE: new-api
     volumes:
       - mysql_data:/var/lib/mysql
