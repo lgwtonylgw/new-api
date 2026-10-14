@@ -11,28 +11,41 @@
 - 缓存：Redis
 - 入口：Cloudflare → Nginx → `127.0.0.1:3000` → new-api
 
-## 一、重要文件和数据
+执行路线：
+
+- 全新安装：第二节 → 第三节 → 第五节 → 第六节 → 第七节
+- 迁移服务器：新服务器执行第二节 → 旧服务器执行 4.1、4.2 → 新服务器执行 4.3 → 第五节 → 第六节 → 第七节
+
+## 一、部署约定与重要数据
 
 迁移或备份时需要保留：
 
 | 内容 | 位置 | 是否必须 |
 | --- | --- | --- |
 | MySQL 数据 | Compose 的 `mysql_data` 数据卷 | 必须，使用 `mysqldump` 导出 |
-| 服务密码 | `/data/new-api/.env` | 必须，禁止提交到 Git |
+| 服务密码和会话密钥 | `/data/new-api/.env` | 必须，禁止提交到 Git |
+| MobaXterm SSH 私钥 | 管理员电脑的安全存储 | 必须，设置保护口令且不得上传服务器 |
 | 应用文件 | `/data/new-api/data` | 建议保留 |
 | 应用日志 | `/data/new-api/logs` | 可选 |
 | 源代码 | Git 仓库 | 重新拉取即可 |
 | Redis 数据 | 无持久化卷 | 不需要迁移 |
 
-生产环境不要执行 `docker compose down -v`，`-v` 会删除 MySQL 数据卷。
+必须遵守：
+
+- 生产环境不要执行 `docker compose down -v`，`-v` 会删除 MySQL 数据卷。
+- 不要执行不带 `--quiet` 的 `docker compose config`，它可能在终端中展开并显示密码。
+- 迁移期间不要让新旧两台服务器同时对外写入业务数据。
+- `.env` 和迁移备份包含真实密码及会话密钥，不得提交到 Git、发送到聊天或放入公开存储。
 
 ## 二、新服务器基础环境
 
 以下命令适用于 Ubuntu/Debian，并假定当前用户是 `root`：
 
+### 2.1 安装基础软件
+
 ```bash
 apt update
-apt install -y git curl ca-certificates nginx certbot python3-certbot-nginx
+apt install -y git curl ca-certificates nginx certbot python3-certbot-nginx ufw at
 
 if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
@@ -46,11 +59,97 @@ docker --version
 docker compose version
 ```
 
-云服务器安全组至少需要：
+### 2.2 使用 MobaXterm SSH 密钥登录
 
-- TCP 22：仅允许自己的固定 IP
+新服务器首次开通时可以临时使用服务商提供的密码登录。完成本节并确认密钥登录成功后，再关闭 SSH 密码登录。私钥只能保存在自己的电脑上，建议设置保护口令；不要上传、发送或写入服务器。
+
+1. 在 MobaXterm 中打开 `Tools` → `MobaKeyGen`，生成 Ed25519 密钥并保存私钥，然后复制公钥文本。
+2. 在仍然保持连接的新服务器上安装公钥：
+
+```bash
+install -d -m 700 /root/.ssh
+touch /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+nano /root/.ssh/authorized_keys
+```
+
+每个公钥独占一行。保存后，在 MobaXterm 新建 SSH 会话，填写服务器 IP、当前 SSH 端口和用户名 `root`，在 `Advanced SSH settings` 中勾选 `Use private key` 并选择私钥。保持旧会话开启，确认新会话能够通过私钥登录后再继续。
+
+### 2.3 配置防火墙和 SSH 密钥专用登录
+
+本项目使用 TCP `52222` 作为 SSH 端口。云服务器有安全组时，至少允许：
+
+- TCP 52222：仅允许自己的固定 IP；公网 IP 不固定时先允许公网
 - TCP 80、443：允许公网；稳定后可进一步只允许 Cloudflare IP 段
 - 不开放 3000、3306、6379
+
+没有安全组或控制台救援入口时，先安排十分钟后的 UFW 自动回滚，防止误操作导致服务器失联：
+
+```bash
+systemctl enable --now atd
+CURRENT_SSH_PORT="$(sshd -T | awk '$1 == "port" {print $2; exit}')"
+echo "当前 SSH 端口：$CURRENT_SSH_PORT"
+
+echo '/usr/sbin/ufw --force disable' | at now + 10 minutes
+atq
+
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow "${CURRENT_SSH_PORT}/tcp" comment 'Temporary SSH during migration'
+ufw allow 52222/tcp comment 'SSH key login'
+ufw allow 80/tcp comment 'HTTP'
+ufw allow 443/tcp comment 'HTTPS'
+ufw --force enable
+ufw status verbose
+```
+
+当前 SSH 端口只用于首次迁移过程。接着创建 `/etc/ssh/sshd_config.d/00-key-only.conf`：
+
+```bash
+nano /etc/ssh/sshd_config.d/00-key-only.conf
+```
+
+写入：
+
+```text
+Port 52222
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin prohibit-password
+```
+
+验证配置并平滑重载 SSH：
+
+```bash
+sshd -t
+systemctl reload ssh
+sshd -T | grep -E '^(port|permitrootlogin|pubkeyauthentication|passwordauthentication|kbdinteractiveauthentication)'
+```
+
+期望只出现端口 `52222`、公钥登录为 `yes`，密码和键盘交互登录为 `no`；`PermitRootLogin` 应显示 `prohibit-password` 或等价的 `without-password`。如果仍出现端口 `22`，用下面的命令找到其他生效的端口配置并处理后重新验证：
+
+```bash
+grep -RnsE '^[[:space:]]*Port[[:space:]]+' /etc/ssh/sshd_config /etc/ssh/sshd_config.d
+```
+
+在 MobaXterm 新建第二个会话，改用端口 `52222`、用户名 `root` 和刚才保存的私钥。新会话登录成功后，在仍保留变量的旧会话中删除临时端口规则，并取消 UFW 自动回滚任务：
+
+```bash
+if [ "$CURRENT_SSH_PORT" != "52222" ]; then
+  ufw delete allow "${CURRENT_SSH_PORT}/tcp"
+fi
+ufw status verbose
+atq
+read -rp "请输入上面的 UFW 回滚任务编号: " ROLLBACK_JOB
+atrm "$ROLLBACK_JOB"
+unset ROLLBACK_JOB
+atq
+```
+
+最后一次 `atq` 应没有输出。执行完之前不要关闭旧 SSH 会话。如果新会话无法登录，不要断开旧会话；检查 `sshd -t`、`sshd -T` 和 `ufw status verbose`。若只是 UFW 规则错误，等待十分钟后防火墙会自动关闭。
+
+MobaXterm 会话中保存的是服务器地址、端口、用户名和私钥路径。迁移服务器时应重新核对服务器地址；不得把私钥随数据库备份上传到服务器。
 
 ## 三、全新安装
 
@@ -59,15 +158,17 @@ docker compose version
 ```bash
 mkdir -p /data
 cd /data
-git clone -b feature/20261013-init --single-branch 仓库地址 new-api
+git clone -b feature/20261013-init --single-branch \
+  https://github.com/lgwtonylgw/new-api.git new-api
 cd /data/new-api
 
 umask 077
 MYSQL_ROOT_PASSWORD="$(openssl rand -hex 24)"
 REDIS_PASSWORD="$(openssl rand -hex 24)"
-printf 'MYSQL_ROOT_PASSWORD=%s\nREDIS_PASSWORD=%s\n' \
-  "$MYSQL_ROOT_PASSWORD" "$REDIS_PASSWORD" > .env
-unset MYSQL_ROOT_PASSWORD REDIS_PASSWORD
+SESSION_SECRET="$(openssl rand -hex 32)"
+printf 'MYSQL_ROOT_PASSWORD=%s\nREDIS_PASSWORD=%s\nSESSION_SECRET=%s\n' \
+  "$MYSQL_ROOT_PASSWORD" "$REDIS_PASSWORD" "$SESSION_SECRET" > .env
+unset MYSQL_ROOT_PASSWORD REDIS_PASSWORD SESSION_SECRET
 chmod 600 .env
 
 docker compose config --quiet
@@ -80,7 +181,7 @@ curl --retry 10 --retry-connrefused --retry-delay 2 \
 
 `.env` 只保留在服务器，已被 Git 忽略。不要把真实密码发送到聊天、截图或提交到开源仓库。
 
-应用正常后，完成第六节的 Nginx、HTTPS 和 Cloudflare 配置，然后立即通过 `https://tokenaigate.com/setup` 创建管理员。
+应用正常后，依次完成第五节的 Nginx 和第六节的 HTTPS、Cloudflare 配置，然后立即通过 `https://tokenaigate.com/setup` 创建管理员。
 
 ## 四、从旧服务器迁移
 
@@ -115,7 +216,7 @@ test -s "$BACKUP_DIR/.env"
 sha256sum "$BACKUP_DIR/.env" "$BACKUP_DIR"/* > "$BACKUP_DIR/SHA256SUMS"
 chmod -R go-rwx "$BACKUP_DIR"
 
-unset MYSQL_ROOT_PASSWORD REDIS_PASSWORD
+unset MYSQL_ROOT_PASSWORD REDIS_PASSWORD SESSION_SECRET
 echo "备份目录：$BACKUP_DIR"
 ```
 
@@ -126,14 +227,14 @@ tar -C /data/new-api -czf "$BACKUP_DIR/logs.tar.gz" logs
 sha256sum "$BACKUP_DIR/logs.tar.gz" >> "$BACKUP_DIR/SHA256SUMS"
 ```
 
-备份目录包含数据库和密码，只能通过 SSH/SCP 等加密通道传输。
+备份目录包含数据库、密码和会话密钥，只能通过 SSH/SCP 等加密通道传输。
 
-### 4.2 将备份传到新服务器
+### 4.2 传输并校验备份
 
 仍在旧服务器执行，把占位内容替换为实际值：
 
 ```bash
-scp -r "$BACKUP_DIR" root@新服务器IP:/data/
+scp -P 52222 -r "$BACKUP_DIR" root@新服务器IP:/data/
 ```
 
 在新服务器检查备份，目录名替换为实际名称：
@@ -147,7 +248,8 @@ sha256sum -c SHA256SUMS
 
 ```bash
 cd /data
-git clone -b feature/20261013-init --single-branch 仓库地址 new-api
+git clone -b feature/20261013-init --single-branch \
+  https://github.com/lgwtonylgw/new-api.git new-api
 cd /data/new-api
 
 cp /data/new-api-backup-YYYYMMDD-HHMMSS/.env .env
@@ -171,7 +273,7 @@ docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql \
   mysql -hmysql -uroot new-api \
   < /data/new-api-backup-YYYYMMDD-HHMMSS/new-api.sql
 
-unset MYSQL_ROOT_PASSWORD REDIS_PASSWORD
+unset MYSQL_ROOT_PASSWORD REDIS_PASSWORD SESSION_SECRET
 
 docker compose up -d redis
 docker compose build --pull new-api
@@ -226,7 +328,7 @@ systemctl reload nginx
 
 ## 六、HTTPS 和 Cloudflare 切换
 
-### 6.1 简单迁移方案
+### 6.1 切换域名并签发证书
 
 1. 在 Cloudflare 把 `tokenaigate.com` 的 A 记录修改为新服务器 IP。
 2. 临时将代理状态改为“仅 DNS”（灰色云朵）。
@@ -289,19 +391,30 @@ curl -fsS https://tokenaigate.com/api/status
 
 - 第一条失败：检查 `new-api`、MySQL、Redis 容器
 - 第一条成功、第二条失败：检查 Nginx 和源站证书
-- 前两条成功、第三条失败：检查 Cloudflare、DNS 和服务器安全组
+- 前两条成功、第三条失败：检查 Cloudflare、DNS、UFW 和服务器安全组
 
-## 七、迁移完成后的处理
+## 七、部署完成后的验收与回滚
 
-确认登录、渠道、令牌、余额和 API 调用均正常后：
+先完成服务器侧检查：
 
 ```bash
 cd /data/new-api
 docker compose ps
 docker compose logs --tail=100 new-api
+ufw status verbose
+ss -lntup
+certbot renew --dry-run
 ```
 
-建议保留旧服务器和迁移备份 3～7 天，但保持旧应用停止。备份确认不再需要后再安全删除；其中包含数据库内容和真实密码。
+确认以下项目均正常：
+
+- MobaXterm 通过私钥连接 TCP `52222`，密码登录已关闭
+- UFW 只对外放行 `52222`、`80`、`443`
+- `new-api` 仅绑定 `127.0.0.1:3000`，MySQL 和 Redis 未发布公网端口
+- 管理员登录、渠道、令牌、余额和 API 调用正常
+- HTTPS、Cloudflare 代理和证书自动续期正常
+
+建议保留旧服务器和迁移备份 3～7 天，但保持旧应用停止。备份确认不再需要后再安全删除；其中包含数据库、真实密码和会话密钥。
 
 如果必须立即回滚：
 
@@ -386,7 +499,7 @@ git merge --abort
 
 - 从当前代码构建 `new-api:production`
 - 使用 MySQL，不切换到 PostgreSQL
-- 密码继续从服务器 `.env` 读取，不能写死或提交
+- MySQL、Redis 密码和 `SESSION_SECRET` 继续从服务器 `.env` 读取，不能写死或提交
 - 3000 端口只绑定 `127.0.0.1`
 - 保留 `SESSION_COOKIE_SECURE` 和 `SESSION_COOKIE_TRUSTED_URL`
 - 保留 `mysql_data` 数据卷
@@ -427,9 +540,11 @@ curl -fsS http://127.0.0.1:3000/api/status
 curl -fsS https://tokenaigate.com/api/status
 ```
 
-如果差异列表包含 `docker-compose.yml`、数据库配置或数据卷配置，应先人工检查，再按照下一节的完整配置更新方式部署。
+如果差异列表包含 `docker-compose.yml`、数据库配置或数据卷配置，应先人工检查，再按照 9.2 节的完整配置更新方式部署。
 
 ## 九、日常更新
+
+### 9.1 仅更新应用代码
 
 只更新应用代码，不重建 MySQL 和 Redis：
 
@@ -445,6 +560,8 @@ docker compose logs --tail=100 new-api
 curl -fsS http://127.0.0.1:3000/api/status
 curl -fsS https://tokenaigate.com/api/status
 ```
+
+### 9.2 Compose 基础配置发生变化
 
 如果 `docker-compose.yml` 中的 MySQL、Redis、网络或数据卷配置也发生变化：
 
@@ -492,7 +609,7 @@ printf "ALTER USER USER() IDENTIFIED BY '%s';\n" \
 docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" \
   mysql mysql -hmysql -uroot -e "SELECT 1;"
 
-unset OLD_MYSQL_PASSWORD MYSQL_ROOT_PASSWORD REDIS_PASSWORD
+unset OLD_MYSQL_PASSWORD MYSQL_ROOT_PASSWORD REDIS_PASSWORD SESSION_SECRET
 
 docker compose up -d --force-recreate redis
 docker compose up -d --no-deps --force-recreate new-api
