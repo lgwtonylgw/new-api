@@ -3,6 +3,8 @@
 本文档适用于以下生产配置：
 
 - 域名：`tokenaigate.com`
+- 个人 Fork：`https://github.com/lgwtonylgw/new-api.git`
+- 官方上游：`https://github.com/QuantumNous/new-api.git`
 - Git 分支：`feature/20261013-init`
 - 安装目录：`/data/new-api`
 - 数据库：MySQL 8.2
@@ -309,7 +311,125 @@ docker compose logs --tail=100 new-api
 
 新服务器已经产生业务写入后，直接回滚会丢失这些新数据，必须先反向导出并恢复数据库。
 
-## 八、日常更新
+## 八、同步官方上游更新
+
+仓库长期保持下面的分工：
+
+- `upstream/main`：官方 QuantumNous/new-api 的最新代码
+- `origin/main`：个人 Fork 中跟随官方的主分支，不放自定义修改
+- `origin/feature/20261013-init`：自己的生产定制分支
+
+同步操作在本地开发机器执行，不要直接在生产服务器合并官方分支。正式更新前先按 4.1 节备份生产数据库，并确认本地修改已经提交：
+
+```bash
+cd 本地仓库目录
+git status --short
+```
+
+### 8.1 首次添加官方仓库
+
+只需要执行一次：
+
+```bash
+git remote add upstream https://github.com/QuantumNous/new-api.git
+git remote -v
+```
+
+如果提示 `remote upstream already exists`，执行：
+
+```bash
+git remote set-url upstream https://github.com/QuantumNous/new-api.git
+```
+
+### 8.2 更新个人 Fork 的 main
+
+```bash
+git fetch --prune upstream
+git switch main
+git pull --ff-only origin main
+git merge --ff-only upstream/main
+git push origin main
+```
+
+也可以在 GitHub 的个人 Fork 页面点击 `Sync fork` 更新 `main`，但仍然需要继续执行下一节，把新的 `main` 合并到生产定制分支。
+
+### 8.3 合并到生产定制分支
+
+使用普通合并，不使用 rebase，也不需要强制推送：
+
+```bash
+git switch feature/20261013-init
+git pull --ff-only origin feature/20261013-init
+git merge main
+```
+
+如果没有冲突，直接进入验证。如果发生冲突：
+
+```bash
+git status
+```
+
+逐个编辑冲突文件，删除 `<<<<<<<`、`=======`、`>>>>>>>` 标记，确认结果后执行：
+
+```bash
+git add 冲突文件
+git commit
+```
+
+如果暂时无法确定如何解决，可以安全取消本次合并：
+
+```bash
+git merge --abort
+```
+
+处理 `docker-compose.yml` 冲突时，必须保留本项目的生产配置：
+
+- 从当前代码构建 `new-api:production`
+- 使用 MySQL，不切换到 PostgreSQL
+- 密码继续从服务器 `.env` 读取，不能写死或提交
+- 3000 端口只绑定 `127.0.0.1`
+- 保留 `SESSION_COOKIE_SECURE` 和 `SESSION_COOKIE_TRUSTED_URL`
+- 保留 `mysql_data` 数据卷
+
+### 8.4 验证并推送定制分支
+
+至少检查 Compose 并完成一次镜像构建：
+
+```bash
+docker compose config --quiet
+docker compose build new-api
+git status
+git log --oneline --decorate -10
+git push origin feature/20261013-init
+```
+
+官方更新可能包含数据库迁移或业务行为变化。镜像构建成功不代表数据库升级一定安全，重要版本应先在测试环境使用生产备份的副本验证，再部署到生产。
+
+### 8.5 部署到生产服务器
+
+生产服务器始终只拉取自己的定制分支：
+
+```bash
+cd /data/new-api
+git status --short
+
+OLD_COMMIT="$(git rev-parse HEAD)"
+git pull --ff-only origin feature/20261013-init
+git diff --name-only "$OLD_COMMIT"..HEAD
+
+docker compose config --quiet
+docker compose build --pull new-api
+docker compose up -d --no-deps new-api
+
+docker compose ps
+docker compose logs --tail=100 new-api
+curl -fsS http://127.0.0.1:3000/api/status
+curl -fsS https://tokenaigate.com/api/status
+```
+
+如果差异列表包含 `docker-compose.yml`、数据库配置或数据卷配置，应先人工检查，再按照下一节的完整配置更新方式部署。
+
+## 九、日常更新
 
 只更新应用代码，不重建 MySQL 和 Redis：
 
@@ -334,9 +454,9 @@ git pull --ff-only origin feature/20261013-init
 docker compose up -d --build
 ```
 
-## 九、常见故障
+## 十、常见故障
 
-### 9.1 本机 3000 端口拒绝连接
+### 10.1 本机 3000 端口拒绝连接
 
 ```bash
 cd /data/new-api
@@ -346,7 +466,7 @@ docker compose logs --tail=100 mysql
 docker compose logs --tail=100 redis
 ```
 
-### 9.2 MySQL 报错 1045 Access denied
+### 10.2 MySQL 报错 1045 Access denied
 
 这表示 `.env` 中的新密码与已有 MySQL 数据卷中的旧密码不一致。仅修改 Compose 环境变量不会修改已初始化数据库的密码。
 
@@ -380,7 +500,7 @@ docker compose up -d --no-deps --force-recreate new-api
 
 如果迁移命令仍然返回 `Access denied`，说明输入的旧密码不正确。不要删除数据卷，应从旧配置或 Git 历史中找回数据库初始化时使用的密码。
 
-### 9.3 域名返回 502
+### 10.3 域名返回 502
 
 先检查应用端口：
 
@@ -397,7 +517,7 @@ curl -kfsS --resolve tokenaigate.com:443:127.0.0.1 \
   https://tokenaigate.com/api/status
 ```
 
-### 9.4 查看实时日志
+### 10.4 查看实时日志
 
 ```bash
 cd /data/new-api
