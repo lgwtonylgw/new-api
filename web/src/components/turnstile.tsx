@@ -70,6 +70,11 @@ export function Turnstile({
       try {
         widgetId = window.turnstile.render(ref.current, {
           sitekey: siteKey,
+          // Run verification in the background for normal visitors. Cloudflare
+          // only reveals the widget when its risk check requires interaction.
+          appearance: 'interaction-only',
+          retry: 'auto',
+          'refresh-expired': 'auto',
           size:
             ref.current.clientWidth > 0 && ref.current.clientWidth < 300
               ? 'compact'

@@ -61,6 +61,11 @@ it('uses the current callbacks without rendering a duplicate widget', () => {
   )
   act(() => (options.callback as (token: string) => void)('token'))
   act(() => (options['expired-callback'] as () => void)())
+  expect(options).toMatchObject({
+    appearance: 'interaction-only',
+    retry: 'auto',
+    'refresh-expired': 'auto',
+  })
   expect(oldCallback).not.toHaveBeenCalled()
   expect(latestCallback).toHaveBeenCalledWith('token')
   expect(expired).toHaveBeenCalledOnce()

@@ -511,9 +511,9 @@ export function OAuthSection(props: OAuthSectionProps) {
                       <FormLabel>{t('Client Secret')}</FormLabel>
                       <FormControl>
                         <Input
-                          type='password'
+                          type='text'
                           placeholder={t('Your GitHub OAuth Client Secret')}
-                          autoComplete='new-password'
+                          autoComplete='off'
                           value={field.value ?? ''}
                           onChange={(event) =>
                             field.onChange(event.target.value)
@@ -602,9 +602,9 @@ export function OAuthSection(props: OAuthSectionProps) {
                       <FormLabel>{t('Client Secret')}</FormLabel>
                       <FormControl>
                         <Input
-                          type='password'
+                          type='text'
                           placeholder={t('Your Discord OAuth Client Secret')}
-                          autoComplete='new-password'
+                          autoComplete='off'
                           value={field.value ?? ''}
                           onChange={(event) =>
                             field.onChange(event.target.value)
@@ -731,9 +731,9 @@ export function OAuthSection(props: OAuthSectionProps) {
                       <FormLabel>{t('Client Secret')}</FormLabel>
                       <FormControl>
                         <Input
-                          type='password'
+                          type='text'
                           placeholder={t('OIDC Client Secret')}
-                          autoComplete='new-password'
+                          autoComplete='off'
                           value={field.value ?? ''}
                           onChange={(event) =>
                             field.onChange(event.target.value)
@@ -900,11 +900,11 @@ export function OAuthSection(props: OAuthSectionProps) {
                       <FormLabel>{t('Client Secret')}</FormLabel>
                       <FormControl>
                         <Input
-                          type='password'
+                          type='text'
                           placeholder={t(
                             'Telegram OAuth Client Secret from BotFather'
                           )}
-                          autoComplete='new-password'
+                          autoComplete='off'
                           value={field.value ?? ''}
                           onChange={(event) =>
                             field.onChange(event.target.value)
@@ -1024,9 +1024,9 @@ export function OAuthSection(props: OAuthSectionProps) {
                       <FormLabel>{t('Client Secret')}</FormLabel>
                       <FormControl>
                         <Input
-                          type='password'
+                          type='text'
                           placeholder={t('LinuxDO Client Secret')}
-                          autoComplete='new-password'
+                          autoComplete='off'
                           value={field.value ?? ''}
                           onChange={(event) =>
                             field.onChange(event.target.value)
@@ -1168,11 +1168,7 @@ export function OAuthSection(props: OAuthSectionProps) {
                         <FormItem>
                           <FormLabel>{t('Callback Token')}</FormLabel>
                           <FormControl>
-                            <Input
-                              type='password'
-                              autoComplete='new-password'
-                              {...field}
-                            />
+                            <Input type='text' autoComplete='off' {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -1187,9 +1183,9 @@ export function OAuthSection(props: OAuthSectionProps) {
                           <FormLabel>{t('EncodingAESKey')}</FormLabel>
                           <FormControl>
                             <Input
-                              type='password'
+                              type='text'
                               maxLength={43}
-                              autoComplete='new-password'
+                              autoComplete='off'
                               {...field}
                             />
                           </FormControl>
@@ -1235,9 +1231,9 @@ export function OAuthSection(props: OAuthSectionProps) {
                           <FormLabel>{t('Server Token')}</FormLabel>
                           <FormControl>
                             <Input
-                              type='password'
+                              type='text'
                               placeholder={t('Server Token')}
-                              autoComplete='new-password'
+                              autoComplete='off'
                               {...field}
                             />
                           </FormControl>

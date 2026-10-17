@@ -42,6 +42,48 @@ func (transport authTurnstileTransport) RoundTrip(request *http.Request) (*http.
 	return transport(request)
 }
 
+func TestGetOptionsReturnsOAuthCredentialsToRootSettings(t *testing.T) {
+	common.OptionMapRWMutex.Lock()
+	original := common.OptionMap
+	common.OptionMap = map[string]string{
+		"GitHubClientSecret":     "github-secret",
+		"discord.client_secret":  "discord-secret",
+		"oidc.client_secret":     "oidc-secret",
+		"telegram.client_secret": "telegram-secret",
+		"TelegramBotToken":       "telegram-bot-token",
+		"LinuxDOClientSecret":    "linuxdo-secret",
+		"WeChatCallbackToken":    "wechat-token",
+		"WeChatEncodingAESKey":   "wechat-aes-key",
+		"WeChatServerToken":      "wechat-server-token",
+		"SMTPToken":              "smtp-token-must-remain-hidden",
+	}
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = original
+		common.OptionMapRWMutex.Unlock()
+	})
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	GetOptions(c)
+	require.Equal(t, http.StatusOK, response.Code)
+	for _, value := range []string{
+		"github-secret",
+		"discord-secret",
+		"oidc-secret",
+		"telegram-secret",
+		"telegram-bot-token",
+		"linuxdo-secret",
+		"wechat-token",
+		"wechat-aes-key",
+		"wechat-server-token",
+	} {
+		assert.Contains(t, response.Body.String(), value)
+	}
+	assert.NotContains(t, response.Body.String(), "smtp-token-must-remain-hidden")
+}
+
 func TestAuthTurnstileRejectsFailedResponsesAndReplay(t *testing.T) {
 	originalEnabled, originalSecret, originalTransport := common.TurnstileCheckEnabled, common.TurnstileSecretKey, http.DefaultTransport
 	common.TurnstileCheckEnabled, common.TurnstileSecretKey = true, "test-secret"

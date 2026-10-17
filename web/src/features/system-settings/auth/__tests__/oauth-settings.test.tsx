@@ -118,6 +118,45 @@ beforeEach(async () => {
 })
 
 describe('OAuth settings saves', () => {
+  it('renders stored OAuth credentials as visible text', async () => {
+    const user = userEvent.setup()
+    await renderSettings({
+      GitHubClientSecret: 'github-secret',
+      'discord.client_secret': 'discord-secret',
+      'oidc.client_secret': 'oidc-secret',
+      'telegram.client_secret': 'telegram-secret',
+      LinuxDOClientSecret: 'linuxdo-secret',
+      WeChatAuthMode: 'builtin',
+      WeChatCallbackToken: 'wechat-token',
+      WeChatEncodingAESKey: 'wechat-aes-key',
+    })
+
+    expect(screen.getByDisplayValue('github-secret')).toHaveAttribute(
+      'type',
+      'text'
+    )
+
+    for (const [tab, value] of [
+      ['Discord', 'discord-secret'],
+      ['OIDC', 'oidc-secret'],
+      ['Telegram', 'telegram-secret'],
+      ['LinuxDO', 'linuxdo-secret'],
+    ] as const) {
+      await user.click(screen.getByRole('tab', { name: tab }))
+      expect(screen.getByDisplayValue(value)).toHaveAttribute('type', 'text')
+    }
+
+    await user.click(screen.getByRole('tab', { name: 'WeChat' }))
+    expect(screen.getByDisplayValue('wechat-token')).toHaveAttribute(
+      'type',
+      'text'
+    )
+    expect(screen.getByDisplayValue('wechat-aes-key')).toHaveAttribute(
+      'type',
+      'text'
+    )
+  })
+
   it('saves GitHub credentials before enabling login on first setup', async () => {
     const user = userEvent.setup()
     await renderSettings()

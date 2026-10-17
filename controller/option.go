@@ -34,6 +34,23 @@ var completionRatioMetaOptionKeys = []string{
 	"AudioCompletionRatio",
 }
 
+var oauthCredentialOptionKeys = map[string]struct{}{
+	"GitHubClientSecret":     {},
+	"discord.client_secret":  {},
+	"oidc.client_secret":     {},
+	"telegram.client_secret": {},
+	"TelegramBotToken":       {},
+	"LinuxDOClientSecret":    {},
+	"WeChatCallbackToken":    {},
+	"WeChatEncodingAESKey":   {},
+	"WeChatServerToken":      {},
+}
+
+func isOAuthCredentialOptionKey(key string) bool {
+	_, ok := oauthCredentialOptionKeys[key]
+	return ok
+}
+
 func isPaymentComplianceOptionKey(key string) bool {
 	return strings.HasPrefix(key, "payment_setting.compliance_")
 }
@@ -94,7 +111,7 @@ func GetOptions(c *gin.Context) {
 			strings.HasSuffix(k, "Key") ||
 			strings.HasSuffix(k, "secret") ||
 			strings.HasSuffix(k, "api_key")
-		if isSensitiveKey {
+		if isSensitiveKey && !isOAuthCredentialOptionKey(k) {
 			continue
 		}
 		options = append(options, &model.Option{

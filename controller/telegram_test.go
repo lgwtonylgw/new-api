@@ -381,8 +381,8 @@ func TestTelegramOAuthConfigurationAndLegacyEndpoints(t *testing.T) {
 	assert.Contains(t, status.Body.String(), `"telegram_oauth_configured":true`)
 	assert.NotContains(t, status.Body.String(), "telegram-client-secret")
 	options := securityEnrollmentRequest("GET", "/api/option/", "", "", fixture.identity, GetOptions)
-	assert.NotContains(t, options.Body.String(), "telegram-client-secret")
-	assert.NotContains(t, options.Body.String(), "stored-legacy-token")
+	assert.Contains(t, options.Body.String(), "telegram-client-secret")
+	assert.Contains(t, options.Body.String(), "stored-legacy-token")
 	require.NoError(t, model.DB.Model(fixture.user).Updates(map[string]any{"password": "", "telegram_id": "42"}).Error)
 	for _, unavailable := range []string{"missing secret", "disabled", "conflict"} {
 		t.Run(unavailable, func(t *testing.T) {
