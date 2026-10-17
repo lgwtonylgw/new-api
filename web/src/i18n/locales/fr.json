@@ -932,6 +932,7 @@
     "Cannot enable the email domain restriction. Enter the allowed email domains first.": "Impossible d'activer la restriction de domaine e-mail. Saisissez d'abord les domaines autorisés.",
     "Cannot enable Turnstile verification. Enter the Turnstile settings first.": "Impossible d'activer la vérification Turnstile. Saisissez d'abord les paramètres Turnstile.",
     "Cannot enable WeChat login. Enter the WeChat login settings first.": "Impossible d'activer la connexion WeChat. Saisissez d'abord les paramètres de connexion WeChat.",
+    "Cannot enable WeChat login. Enter the QR code image URL first.": "Impossible d'activer la connexion WeChat. Saisissez d'abord l'URL de l'image du code QR.",
     "Cannot enable {{provider}}. Enter the {{provider}} Client ID and Client Secret first.": "Impossible d'activer {{provider}}. Saisissez d'abord le Client ID et le Client Secret de {{provider}}.",
     "Blend": "Fusion",
     "Block email aliases (e.g., user+alias@domain.com)": "Bloquer les alias d'e-mail (par exemple, utilisateur+alias@domaine.com)",

@@ -932,6 +932,7 @@
     "Cannot enable the email domain restriction. Enter the allowed email domains first.": "无法启用邮箱域名限制，请先填入限制的邮箱域名！",
     "Cannot enable Turnstile verification. Enter the Turnstile settings first.": "无法启用 Turnstile 校验，请先填入 Turnstile 校验相关配置信息！",
     "Cannot enable WeChat login. Enter the WeChat login settings first.": "无法启用微信登录，请先填入微信登录相关配置信息！",
+    "Cannot enable WeChat login. Enter the QR code image URL first.": "无法启用微信登录，请先填写二维码图片 URL。",
     "Cannot enable {{provider}}. Enter the {{provider}} Client ID and Client Secret first.": "无法启用 {{provider}}，请先填入 {{provider}} 的 Client ID 和 Client Secret！",
     "Blend": "混合",
     "Block email aliases (e.g., user+alias@domain.com)": "阻止电子邮件别名（例如，user+alias@domain.com）",

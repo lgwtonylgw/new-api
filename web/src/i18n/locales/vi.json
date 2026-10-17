@@ -932,6 +932,7 @@
     "Cannot enable the email domain restriction. Enter the allowed email domains first.": "Không thể bật giới hạn tên miền email. Hãy nhập các tên miền email được phép trước.",
     "Cannot enable Turnstile verification. Enter the Turnstile settings first.": "Không thể bật xác minh Turnstile. Hãy nhập cài đặt Turnstile trước.",
     "Cannot enable WeChat login. Enter the WeChat login settings first.": "Không thể bật đăng nhập WeChat. Hãy nhập cài đặt đăng nhập WeChat trước.",
+    "Cannot enable WeChat login. Enter the QR code image URL first.": "Không thể bật đăng nhập WeChat. Hãy nhập URL hình ảnh mã QR trước.",
     "Cannot enable {{provider}}. Enter the {{provider}} Client ID and Client Secret first.": "Không thể bật {{provider}}. Hãy nhập Client ID và Client Secret của {{provider}} trước.",
     "Blend": "Trộn",
     "Block email aliases (e.g., user+alias@domain.com)": "Chặn bí danh email (ví dụ: user+alias@domain.com)",

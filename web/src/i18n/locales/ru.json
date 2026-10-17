@@ -932,6 +932,7 @@
     "Cannot enable the email domain restriction. Enter the allowed email domains first.": "Невозможно включить ограничение по домену почты. Сначала укажите разрешённые домены.",
     "Cannot enable Turnstile verification. Enter the Turnstile settings first.": "Невозможно включить проверку Turnstile. Сначала заполните настройки Turnstile.",
     "Cannot enable WeChat login. Enter the WeChat login settings first.": "Невозможно включить вход через WeChat. Сначала заполните настройки входа WeChat.",
+    "Cannot enable WeChat login. Enter the QR code image URL first.": "Невозможно включить вход через WeChat. Сначала укажите URL изображения QR-кода.",
     "Cannot enable {{provider}}. Enter the {{provider}} Client ID and Client Secret first.": "Невозможно включить {{provider}}. Сначала укажите Client ID и Client Secret для {{provider}}.",
     "Blend": "Смешивание",
     "Block email aliases (e.g., user+alias@domain.com)": "Блокировать псевдонимы email (например, user+alias@domain.com)",

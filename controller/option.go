@@ -243,7 +243,7 @@ func UpdateOption(c *gin.Context) {
 	case "WeChatAuthEnabled":
 		if option.Value == "true" {
 			if strings.TrimSpace(common.WeChatAccountQRCodeImageURL) == "" {
-				common.ApiErrorT(c, "Cannot enable WeChat login. Enter the WeChat login settings first.")
+				common.ApiErrorT(c, "Cannot enable WeChat login. Enter the QR code image URL first.")
 				return
 			}
 			switch common.WeChatAuthMode {

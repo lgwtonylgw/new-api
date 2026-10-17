@@ -1267,6 +1267,7 @@ export function OAuthSection(props: OAuthSectionProps) {
                           ref={field.ref}
                         />
                       </FormControl>
+                      <FormDescription>{t('required')}</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
