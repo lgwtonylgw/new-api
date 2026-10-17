@@ -48,6 +48,8 @@ func TestGetStatusReturnsEffectiveOIDCDisplayName(t *testing.T) {
 
 			GetStatus(context)
 
+			assert.Contains(t, response.Header().Get("Cache-Control"), "no-store")
+			assert.Equal(t, "no-store", response.Header().Get("Cloudflare-CDN-Cache-Control"))
 			var payload struct {
 				Success bool           `json:"success"`
 				Data    map[string]any `json:"data"`

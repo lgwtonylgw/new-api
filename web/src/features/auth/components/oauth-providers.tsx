@@ -41,6 +41,7 @@ type OAuthProvidersProps = {
   isWeChatLoading?: boolean
   redirectTo?: string
   turnstile?: { token: string; onConsume: () => void }
+  onBeforeLogin?: () => boolean
 }
 
 type ProviderButton = {
@@ -59,6 +60,7 @@ export function OAuthProviders({
   isWeChatLoading = false,
   redirectTo,
   turnstile,
+  onBeforeLogin,
 }: OAuthProvidersProps) {
   const { t } = useTranslation()
   const {
@@ -161,7 +163,10 @@ export function OAuthProviders({
               variant='outline'
               type='button'
               disabled={disabled || isLoading || extraDisabled}
-              onClick={onClick}
+              onClick={() => {
+                if (onBeforeLogin && !onBeforeLogin()) return
+                onClick()
+              }}
               className={cn(
                 'h-10 w-full justify-center gap-3 rounded-full',
                 key === 'telegram' && 'border-sky-400/50 text-sky-600',

@@ -442,3 +442,32 @@ it('rejects an unsuccessful setting update so callers cannot proceed as if it sa
   unmount()
   client.clear()
 })
+
+it('clears the public status snapshot after enabling WeChat login', async () => {
+  const client = createAppQueryClient()
+  const invalidate = vi.spyOn(client, 'invalidateQueries')
+  window.localStorage.setItem('status', JSON.stringify({ wechat_login: false }))
+  api.defaults.adapter = async (config) => ({
+    data: { success: true },
+    status: 200,
+    statusText: 'OK',
+    headers: {},
+    config,
+  })
+  const { result, unmount } = renderHook(() => useUpdateOption(), {
+    wrapper: (props: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, props.children),
+  })
+
+  await act(async () => {
+    await result.current.mutateAsync({
+      key: 'WeChatAuthEnabled',
+      value: true,
+    })
+  })
+
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['status'] })
+  expect(window.localStorage.getItem('status')).toBeNull()
+  unmount()
+  client.clear()
+})

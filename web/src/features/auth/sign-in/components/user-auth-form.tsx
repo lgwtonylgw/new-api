@@ -104,7 +104,6 @@ export function UserAuthForm({
     validateTurnstile,
   } = useTurnstile()
   const { handleLoginResult } = useAuthRedirect()
-  const turnstileReady = !isTurnstileEnabled || Boolean(turnstileToken)
   const resetTurnstile = () => {
     setTurnstileToken('')
     setTurnstileWidgetKey((current) => current + 1)
@@ -113,10 +112,7 @@ export function UserAuthForm({
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
   const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
   const requiresLegalConsent = hasUserAgreement || hasPrivacyPolicy
-  const passkeyButtonDisabled =
-    isPasskeyLoading ||
-    !passkeySupported ||
-    (requiresLegalConsent && !agreedToLegal)
+  const passkeyButtonDisabled = isPasskeyLoading || !passkeySupported
   const hasWeChatLogin = Boolean(status?.wechat_login)
   const hasOAuthLogin = Boolean(
     status?.github_oauth ||
@@ -204,6 +200,14 @@ export function UserAuthForm({
     setIsWeChatDialogOpen(true)
   }
 
+  const validateAlternativeLogin = () => {
+    if (requiresLegalConsent && !agreedToLegal) {
+      toast.error(legalConsentErrorMessage)
+      return false
+    }
+    return validateTurnstile()
+  }
+
   const handleWeChatDialogChange = (open: boolean) => {
     setIsWeChatDialogOpen(open)
     if (!open) {
@@ -213,6 +217,10 @@ export function UserAuthForm({
   }
 
   async function handleWeChatLogin() {
+    if (requiresLegalConsent && !agreedToLegal) {
+      toast.error(legalConsentErrorMessage)
+      return
+    }
     if (!validateTurnstile()) return
     if (!wechatCode.trim()) {
       toast.error(t('Please enter the verification code'))
@@ -335,11 +343,8 @@ export function UserAuthForm({
       <OAuthProviders
         status={status}
         redirectTo={redirectTo}
-        disabled={
-          isLoading ||
-          !turnstileReady ||
-          (requiresLegalConsent && !agreedToLegal)
-        }
+        disabled={isLoading}
+        onBeforeLogin={validateAlternativeLogin}
         turnstile={{ token: turnstileToken, onConsume: resetTurnstile }}
         onWeChatLogin={hasWeChatLogin ? handleOpenWeChatDialog : undefined}
         isWeChatLoading={isWeChatSubmitting}
@@ -430,11 +435,7 @@ export function UserAuthForm({
           <Button
             type='submit'
             className='mt-2 w-full justify-center gap-2 rounded-full'
-            disabled={
-              isLoading ||
-              !turnstileReady ||
-              (requiresLegalConsent && !agreedToLegal)
-            }
+            disabled={isLoading}
           >
             {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
             {t('Sign in')}
@@ -491,11 +492,7 @@ export function UserAuthForm({
               <Button
                 type='button'
                 onClick={handleWeChatLogin}
-                disabled={
-                  isWeChatSubmitting ||
-                  !wechatCode.trim() ||
-                  (requiresLegalConsent && !agreedToLegal)
-                }
+                disabled={isWeChatSubmitting}
                 className='gap-2'
               >
                 {isWeChatSubmitting ? (

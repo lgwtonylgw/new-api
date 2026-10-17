@@ -109,7 +109,6 @@ export function SignUpForm({
     status?.data?.oauth_register_enabled ??
     true
   const hasWeChatLogin = Boolean(status?.wechat_login)
-  const turnstileReady = !isTurnstileEnabled || Boolean(turnstileToken)
   const hasOAuthLogin =
     oauthRegisterEnabled &&
     Boolean(
@@ -196,6 +195,10 @@ export function SignUpForm({
   }
 
   async function handleSendVerificationCode() {
+    if (requiresLegalConsent && !agreedToLegal) {
+      toast.error(legalConsentErrorMessage)
+      return
+    }
     try {
       await sendCode(emailValue || '')
     } finally {
@@ -212,6 +215,14 @@ export function SignUpForm({
     setIsWeChatDialogOpen(true)
   }
 
+  const validateAlternativeLogin = () => {
+    if (requiresLegalConsent && !agreedToLegal) {
+      toast.error(legalConsentErrorMessage)
+      return false
+    }
+    return validateTurnstile()
+  }
+
   const handleWeChatDialogChange = (open: boolean) => {
     setIsWeChatDialogOpen(open)
     if (!open) {
@@ -221,6 +232,10 @@ export function SignUpForm({
   }
 
   async function handleWeChatLogin() {
+    if (requiresLegalConsent && !agreedToLegal) {
+      toast.error(legalConsentErrorMessage)
+      return
+    }
     if (!validateTurnstile()) return
     if (!wechatCode.trim()) {
       toast.error(t('Please enter the verification code'))
@@ -267,11 +282,8 @@ export function SignUpForm({
         {hasOAuthLogin && !showPasswordForm && (
           <OAuthProviders
             status={status}
-            disabled={
-              isLoading ||
-              !turnstileReady ||
-              (requiresLegalConsent && !agreedToLegal)
-            }
+            disabled={isLoading}
+            onBeforeLogin={validateAlternativeLogin}
             turnstile={{ token: turnstileToken, onConsume: resetTurnstile }}
             onWeChatLogin={hasWeChatLogin ? handleOpenWeChatDialog : undefined}
             isWeChatLoading={isWeChatSubmitting}
@@ -389,13 +401,7 @@ export function SignUpForm({
                   <Button
                     variant='outline'
                     type='button'
-                    disabled={
-                      isLoading ||
-                      isSendingCode ||
-                      isActive ||
-                      !emailValue ||
-                      !turnstileReady
-                    }
+                    disabled={isLoading || isSendingCode || isActive}
                     onClick={handleSendVerificationCode}
                   >
                     {verificationCodeAction}
@@ -430,11 +436,7 @@ export function SignUpForm({
           <Button
             type='submit'
             className='mt-2 w-full justify-center gap-2'
-            disabled={
-              isLoading ||
-              (requiresLegalConsent && !agreedToLegal) ||
-              !turnstileReady
-            }
+            disabled={isLoading}
           >
             {isLoading ? <Loader2 className='h-4 w-4 animate-spin' /> : null}
             {t('Create account')}
@@ -478,11 +480,7 @@ export function SignUpForm({
               <Button
                 type='button'
                 onClick={handleWeChatLogin}
-                disabled={
-                  isWeChatSubmitting ||
-                  !wechatCode.trim() ||
-                  (requiresLegalConsent && !agreedToLegal)
-                }
+                disabled={isWeChatSubmitting}
                 className='gap-2'
               >
                 {isWeChatSubmitting ? (

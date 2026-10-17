@@ -71,7 +71,9 @@ export async function getUserGroups(): Promise<{
 // ============================================================================
 
 export async function getStatus() {
-  const res = await api.get('/api/status')
+  const res = await api.get('/api/status', {
+    params: { cache_bust: Date.now() },
+  })
   return requireServerSuccess(res.data)?.data as Record<string, unknown>
 }
 

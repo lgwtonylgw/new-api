@@ -93,7 +93,7 @@ it.each(['login', 'register'])(
     for (const provider of ['WeChat', 'GitHub', 'Google', 'Telegram']) {
       expect(
         screen.getByRole('button', { name: `Continue with ${provider}` })
-      ).toBeDisabled()
+      ).toBeEnabled()
     }
     expect(
       screen.getByRole('link', { name: 'User Agreement' })
@@ -104,7 +104,7 @@ it.each(['login', 'register'])(
     await user.click(screen.getByRole('checkbox'))
     expect(
       screen.getByRole('button', { name: 'Continue with GitHub' })
-    ).toBeDisabled()
+    ).toBeEnabled()
     await user.click(
       screen.getByRole('button', { name: 'Complete human verification' })
     )
@@ -123,11 +123,17 @@ it.each(['login', 'register'])(
       screen.getByLabelText(mode === 'login' ? 'Username or Email' : 'Username')
     ).toBeVisible()
     expect(
+      screen.getByRole('button', {
+        name: mode === 'login' ? 'Sign in' : 'Create account',
+      })
+    ).toBeEnabled()
+    expect(
       screen.queryByRole('button', { name: 'Continue with Google' })
     ).not.toBeInTheDocument()
     if (mode === 'register') {
       expect(screen.getByLabelText('Confirm password')).toBeVisible()
       expect(screen.getByPlaceholderText('Verification code')).toBeVisible()
+      expect(screen.getByRole('button', { name: 'Send code' })).toBeEnabled()
     }
     await user.click(
       screen.getByRole('button', {
@@ -142,9 +148,31 @@ it.each(['login', 'register'])(
     )
     expect(
       screen.getByRole('button', { name: 'Continue with GitHub' })
-    ).toBeDisabled()
+    ).toBeEnabled()
   }
 )
+
+it('keeps OAuth buttons clickable while prerequisites are pending', async () => {
+  const user = userEvent.setup()
+  render(<UserAuthForm />)
+  const weChatButton = screen.getByRole('button', {
+    name: 'Continue with WeChat',
+  })
+
+  await user.click(weChatButton)
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+  await user.click(screen.getByRole('checkbox'))
+  await user.click(weChatButton)
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+  await user.click(
+    screen.getByRole('button', { name: 'Complete human verification' })
+  )
+  await user.click(weChatButton)
+  expect(screen.getByRole('dialog')).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Confirm' })).toBeEnabled()
+})
 
 it('shows username login directly when no alternative is configured', () => {
   status = { password_login_enabled: true }
