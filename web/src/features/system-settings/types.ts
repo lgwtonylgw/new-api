@@ -189,6 +189,10 @@ export type AuthSettings = {
   LinuxDOClientSecret: string
   LinuxDOMinimumTrustLevel: string
   WeChatAuthEnabled: boolean
+  WeChatAuthMode: 'builtin' | 'external'
+  WeChatAppID: string
+  WeChatCallbackToken: string
+  WeChatEncodingAESKey: string
   WeChatServerAddress: string
   WeChatServerToken: string
   WeChatAccountQRCodeImageURL: string
@@ -313,6 +317,9 @@ export type BillingSettings = {
   MinTopUp: number
   CustomCallbackAddress: string
   PayMethods: string
+  'payment_setting.alipay_manual_enabled': boolean
+  'payment_setting.alipay_qr_code_url': string
+  'payment_setting.alipay_payee_name': string
   'payment_setting.amount_options': string
   'payment_setting.amount_discount': string
   'payment_setting.compliance_confirmed': boolean

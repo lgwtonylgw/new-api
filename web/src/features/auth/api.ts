@@ -175,7 +175,8 @@ export async function createOAuthAuthorization(
   intent: 'login' | 'bind' | 'verify',
   operation?: VerificationOperation,
   signal?: AbortSignal,
-  proofToken?: string
+  proofToken?: string,
+  turnstile?: string
 ): Promise<{ state: string; authorizationUrl?: string }> {
   const aff = intent === 'login' ? getAffiliateCode() : ''
   const res = await api.post(
@@ -189,6 +190,7 @@ export async function createOAuthAuthorization(
     },
     {
       skipAuthRefresh: intent === 'login',
+      ...(turnstile ? { params: { turnstile } } : {}),
       ...(proofToken ? { headers: { 'X-Security-Proof': proofToken } } : {}),
       singleUseAuthorization: intent === 'bind',
       signal,
@@ -224,8 +226,13 @@ export async function createOAuthFlow(
 }
 
 // WeChat login by authorization code
-export async function wechatLoginByCode(code: string): Promise<ApiResponse> {
-  const res = await api.get('/api/oauth/wechat', { params: { code } })
+export async function wechatLoginByCode(
+  code: string,
+  turnstile?: string
+): Promise<ApiResponse> {
+  const res = await api.get('/api/oauth/wechat', {
+    params: { code, turnstile },
+  })
   return res.data
 }
 

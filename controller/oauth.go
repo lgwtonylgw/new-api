@@ -59,6 +59,11 @@ func GenerateOAuthCode(c *gin.Context) {
 		common.ApiErrorT(c, "Invalid parameters")
 		return
 	}
+	if request.Intent == model.AuthFlowIntentLogin {
+		if !middleware.VerifyTurnstile(c) {
+			return
+		}
+	}
 	userID := 0
 	sessionID := ""
 	flowPayload := oauthFlowPayload{AffiliateCode: request.Aff}

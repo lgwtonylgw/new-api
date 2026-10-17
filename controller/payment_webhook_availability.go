@@ -108,3 +108,10 @@ func isEpayWebhookConfigured() bool {
 func isEpayWebhookEnabled() bool {
 	return isEpayTopUpEnabled()
 }
+
+func isManualAlipayTopUpEnabled() bool {
+	settings := operation_setting.GetPaymentSetting()
+	return isPaymentComplianceConfirmed() &&
+		settings.AlipayManualEnabled &&
+		strings.HasPrefix(strings.TrimSpace(settings.AlipayQRCodeURL), "https://")
+}

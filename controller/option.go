@@ -216,7 +216,7 @@ func UpdateOption(c *gin.Context) {
 	}
 	switch option.Key {
 	case "GitHubOAuthEnabled":
-		if option.Value == "true" && common.GitHubClientId == "" {
+		if option.Value == "true" && (strings.TrimSpace(common.GitHubClientId) == "" || strings.TrimSpace(common.GitHubClientSecret) == "") {
 			common.ApiErrorT(c, "Cannot enable {{provider}}. Enter the {{provider}} Client ID and Client Secret first.", map[string]any{"provider": "GitHub OAuth"})
 			return
 		}
@@ -226,7 +226,7 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "oidc.enabled":
-		if option.Value == "true" && system_setting.GetOIDCSettings().ClientId == "" {
+		if option.Value == "true" && (strings.TrimSpace(system_setting.GetOIDCSettings().ClientId) == "" || strings.TrimSpace(system_setting.GetOIDCSettings().ClientSecret) == "") {
 			common.ApiErrorT(c, "Cannot enable {{provider}}. Enter the {{provider}} Client ID and Client Secret first.", map[string]any{"provider": "OIDC"})
 			return
 		}
@@ -241,12 +241,33 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "WeChatAuthEnabled":
-		if option.Value == "true" && common.WeChatServerAddress == "" {
-			common.ApiErrorT(c, "Cannot enable WeChat login. Enter the WeChat login settings first.")
-			return
+		if option.Value == "true" {
+			if strings.TrimSpace(common.WeChatAccountQRCodeImageURL) == "" {
+				common.ApiErrorT(c, "Cannot enable WeChat login. Enter the WeChat login settings first.")
+				return
+			}
+			switch common.WeChatAuthMode {
+			case "builtin":
+				if strings.TrimSpace(common.WeChatAppID) == "" || strings.TrimSpace(common.WeChatCallbackToken) == "" {
+					common.ApiErrorT(c, "Cannot enable WeChat login. Enter the built-in callback settings first.")
+					return
+				}
+				if _, err := decodeWeChatEncodingAESKey(common.WeChatEncodingAESKey); err != nil {
+					common.ApiErrorT(c, "Cannot enable WeChat login. Enter a valid 43-character EncodingAESKey first.")
+					return
+				}
+			case "external":
+				if strings.TrimSpace(common.WeChatServerAddress) == "" || strings.TrimSpace(common.WeChatServerToken) == "" {
+					common.ApiErrorT(c, "Cannot enable WeChat login. Enter the external WeChat server settings first.")
+					return
+				}
+			default:
+				common.ApiErrorT(c, "Cannot enable WeChat login. Select a valid WeChat authentication mode first.")
+				return
+			}
 		}
 	case "TurnstileCheckEnabled":
-		if option.Value == "true" && common.TurnstileSiteKey == "" {
+		if option.Value == "true" && (strings.TrimSpace(common.TurnstileSiteKey) == "" || strings.TrimSpace(common.TurnstileSecretKey) == "") {
 			common.ApiErrorT(c, "Cannot enable Turnstile verification. Enter the Turnstile settings first.")
 			return
 		}

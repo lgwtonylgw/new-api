@@ -37,6 +37,13 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -88,6 +95,10 @@ const oauthSchema = z.object({
   LinuxDOClientSecret: z.string(),
   LinuxDOMinimumTrustLevel: z.string(),
   WeChatAuthEnabled: z.boolean(),
+  WeChatAuthMode: z.enum(['builtin', 'external']),
+  WeChatAppID: z.string(),
+  WeChatCallbackToken: z.string(),
+  WeChatEncodingAESKey: z.string(),
   WeChatServerAddress: z.string(),
   WeChatServerToken: z.string(),
   WeChatAccountQRCodeImageURL: z.string(),
@@ -118,6 +129,10 @@ type FlatOAuthDefaults = {
   LinuxDOClientSecret: string
   LinuxDOMinimumTrustLevel: string
   WeChatAuthEnabled: boolean
+  WeChatAuthMode: 'builtin' | 'external'
+  WeChatAppID: string
+  WeChatCallbackToken: string
+  WeChatEncodingAESKey: string
   WeChatServerAddress: string
   WeChatServerToken: string
   WeChatAccountQRCodeImageURL: string
@@ -204,6 +219,10 @@ const buildFormDefaults = (defaults: FlatOAuthDefaults): OAuthFormValues => ({
   LinuxDOClientSecret: defaults.LinuxDOClientSecret ?? '',
   LinuxDOMinimumTrustLevel: defaults.LinuxDOMinimumTrustLevel ?? '',
   WeChatAuthEnabled: defaults.WeChatAuthEnabled,
+  WeChatAuthMode: defaults.WeChatAuthMode ?? 'external',
+  WeChatAppID: defaults.WeChatAppID ?? '',
+  WeChatCallbackToken: defaults.WeChatCallbackToken ?? '',
+  WeChatEncodingAESKey: defaults.WeChatEncodingAESKey ?? '',
   WeChatServerAddress: defaults.WeChatServerAddress ?? '',
   WeChatServerToken: defaults.WeChatServerToken ?? '',
   WeChatAccountQRCodeImageURL: defaults.WeChatAccountQRCodeImageURL ?? '',
@@ -231,10 +250,14 @@ const normalizeFormValues = (values: OAuthFormValues): FlatOAuthDefaults => ({
   LinuxDOClientId: values.LinuxDOClientId,
   LinuxDOClientSecret: values.LinuxDOClientSecret,
   LinuxDOMinimumTrustLevel: values.LinuxDOMinimumTrustLevel,
-  WeChatAuthEnabled: values.WeChatAuthEnabled,
+  WeChatAppID: values.WeChatAppID,
+  WeChatCallbackToken: values.WeChatCallbackToken,
+  WeChatEncodingAESKey: values.WeChatEncodingAESKey,
   WeChatServerAddress: values.WeChatServerAddress,
   WeChatServerToken: values.WeChatServerToken,
   WeChatAccountQRCodeImageURL: values.WeChatAccountQRCodeImageURL,
+  WeChatAuthMode: values.WeChatAuthMode,
+  WeChatAuthEnabled: values.WeChatAuthEnabled,
 })
 
 type OAuthSectionProps = {
@@ -272,6 +295,7 @@ export function OAuthSection(props: OAuthSectionProps) {
     'linuxdo',
     t('Site URL')
   )
+  const weChatCallbackUrl = `${siteUrl}/api/wechat/callback`
 
   const formDefaults = useMemo(
     () => buildFormDefaults(props.defaultValues),
@@ -282,6 +306,7 @@ export function OAuthSection(props: OAuthSectionProps) {
     resolver: zodResolver(oauthSchema),
     defaultValues: formDefaults,
   })
+  const weChatAuthMode = form.watch('WeChatAuthMode')
 
   const baselineRef = useRef<FlatOAuthDefaults>(props.defaultValues)
   const baselineSerializedRef = useRef<string>(
@@ -354,7 +379,15 @@ export function OAuthSection(props: OAuthSectionProps) {
     const normalized = normalizeFormValues(finalValues)
     const changedKeys = (
       Object.keys(normalized) as Array<keyof FlatOAuthDefaults>
-    ).filter((key) => normalized[key] !== baselineRef.current[key])
+    )
+      .filter((key) => normalized[key] !== baselineRef.current[key])
+      // Persist credentials and discovered endpoints before enabling a provider.
+      .sort((left, right) => {
+        const enablesProvider = (key: keyof FlatOAuthDefaults) =>
+          (key.endsWith('Enabled') || key.endsWith('.enabled')) &&
+          normalized[key] === true
+        return Number(enablesProvider(left)) - Number(enablesProvider(right))
+      })
 
     if (changedKeys.length === 0) {
       toast.info(t('No changes to save'))
@@ -384,9 +417,11 @@ export function OAuthSection(props: OAuthSectionProps) {
 
       <SettingsSection title={t('OAuth Integrations')}>
         <Form {...form}>
-          <SettingsForm onSubmit={form.handleSubmit(onSubmit)}>
+          <SettingsForm
+            onSubmit={(event) => form.handleSubmit(onSubmit)(event)}
+          >
             <SettingsPageFormActions
-              onSave={form.handleSubmit(onSubmit)}
+              onSave={() => form.handleSubmit(onSubmit)()}
               onReset={handleReset}
               isSaving={form.formState.isSubmitting}
               isResetDisabled={!form.formState.isDirty}
@@ -1035,6 +1070,22 @@ export function OAuthSection(props: OAuthSectionProps) {
               </TabsContent>
 
               <TabsContent value='wechat' className={oauthTabContentClassName}>
+                {weChatAuthMode === 'builtin' && (
+                  <OAuthSetupGuide
+                    title={t('Setup guide')}
+                    description={t(
+                      'Set this URL in the WeChat Official Account message callback, then select secure mode.'
+                    )}
+                    rows={[
+                      {
+                        label: t('Message callback URL'),
+                        value: weChatCallbackUrl,
+                        copyLabel: t('Copy callback URL'),
+                      },
+                    ]}
+                  />
+                )}
+
                 <FormField
                   control={form.control}
                   name='WeChatAuthEnabled'
@@ -1058,52 +1109,144 @@ export function OAuthSection(props: OAuthSectionProps) {
 
                 <FormField
                   control={form.control}
-                  name='WeChatServerAddress'
+                  name='WeChatAuthMode'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t('Server Address')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder={t('https://wechat-server.example.com')}
-                          autoComplete='off'
-                          value={field.value ?? ''}
-                          onChange={(event) =>
-                            field.onChange(event.target.value)
-                          }
-                          name={field.name}
-                          onBlur={field.onBlur}
-                          ref={field.ref}
-                        />
-                      </FormControl>
+                      <FormLabel>{t('Mode')}</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value='builtin'>
+                            {t('Built-in callback')}
+                          </SelectItem>
+                          <SelectItem value='external'>
+                            {t('External service')}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        {t(
+                          'Built-in callback is recommended and does not require a separate wechat-server deployment.'
+                        )}
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name='WeChatServerToken'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Server Token')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          type='password'
-                          placeholder={t('Server Token')}
-                          autoComplete='new-password'
-                          value={field.value ?? ''}
-                          onChange={(event) =>
-                            field.onChange(event.target.value)
-                          }
-                          name={field.name}
-                          onBlur={field.onBlur}
-                          ref={field.ref}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {weChatAuthMode === 'builtin' && (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name='WeChatAppID'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('App ID')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder='wx...'
+                              autoComplete='off'
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='WeChatCallbackToken'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Callback Token')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type='password'
+                              autoComplete='new-password'
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='WeChatEncodingAESKey'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('EncodingAESKey')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type='password'
+                              maxLength={43}
+                              autoComplete='new-password'
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            {t(
+                              'Use the same Token and EncodingAESKey in WeChat and select secure mode.'
+                            )}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
+                )}
+
+                {weChatAuthMode === 'external' && (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name='WeChatServerAddress'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Server Address')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder={t(
+                                'https://wechat-server.example.com'
+                              )}
+                              autoComplete='off'
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='WeChatServerToken'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Server Token')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type='password'
+                              placeholder={t('Server Token')}
+                              autoComplete='new-password'
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
+                )}
 
                 <FormField
                   control={form.control}

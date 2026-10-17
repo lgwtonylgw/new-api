@@ -26,6 +26,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   resolve: {
     alias: {
+      '@lobe-icons': path.resolve(__dirname, './node_modules/@lobehub/icons/es'),
       '@': path.resolve(__dirname, './src'),
     },
   },

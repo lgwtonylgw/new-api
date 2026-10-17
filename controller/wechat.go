@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -25,8 +26,16 @@ type wechatLoginResponse struct {
 }
 
 func getWeChatIdByCode(code string) (string, error) {
+	code = strings.TrimSpace(code)
 	if code == "" {
 		return "", common.NewMessage("Invalid parameters")
+	}
+	if common.WeChatAuthMode == "builtin" {
+		wechatID, err := service.ConsumeWeChatVerificationCode(context.Background(), code)
+		if err != nil {
+			return "", common.NewMessage("Verification code is incorrect or has expired")
+		}
+		return wechatID, nil
 	}
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/wechat/user?code=%s", common.WeChatServerAddress, url.QueryEscape(code)), nil)
 	if err != nil {

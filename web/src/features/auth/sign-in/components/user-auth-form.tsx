@@ -67,6 +67,7 @@ export function UserAuthForm({
 }: AuthFormProps) {
   const { t } = useTranslation()
   const [isLoading, setIsLoading] = useState(false)
+  const [showPasswordForm, setShowPasswordForm] = useState(false)
   const [wechatCode, setWeChatCode] = useState('')
   const [agreedToLegal, setAgreedToLegal] = useState(false)
   const [passkeySupported, setPasskeySupported] = useState(false)
@@ -103,6 +104,11 @@ export function UserAuthForm({
     validateTurnstile,
   } = useTurnstile()
   const { handleLoginResult } = useAuthRedirect()
+  const turnstileReady = !isTurnstileEnabled || Boolean(turnstileToken)
+  const resetTurnstile = () => {
+    setTurnstileToken('')
+    setTurnstileWidgetKey((current) => current + 1)
+  }
 
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
   const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
@@ -122,14 +128,6 @@ export function UserAuthForm({
   )
   const hasAlternativeLogin =
     passkeyLoginEnabled || hasWeChatLogin || hasOAuthLogin
-
-  useEffect(() => {
-    if (requiresLegalConsent) {
-      setAgreedToLegal(false)
-    } else {
-      setAgreedToLegal(true)
-    }
-  }, [requiresLegalConsent])
 
   useEffect(() => {
     detectPasskeySupport()
@@ -215,6 +213,7 @@ export function UserAuthForm({
   }
 
   async function handleWeChatLogin() {
+    if (!validateTurnstile()) return
     if (!wechatCode.trim()) {
       toast.error(t('Please enter the verification code'))
       return
@@ -222,7 +221,7 @@ export function UserAuthForm({
 
     setIsWeChatSubmitting(true)
     try {
-      const res = await wechatLoginByCode(wechatCode)
+      const res = await wechatLoginByCode(wechatCode, turnstileToken)
       if (res?.success) {
         handleWeChatDialogChange(false)
         if (await handleLoginResult(res.data, redirectTo)) {
@@ -237,6 +236,7 @@ export function UserAuthForm({
       )
     } finally {
       setIsWeChatSubmitting(false)
+      resetTurnstile()
     }
   }
 
@@ -335,7 +335,12 @@ export function UserAuthForm({
       <OAuthProviders
         status={status}
         redirectTo={redirectTo}
-        disabled={isLoading || (requiresLegalConsent && !agreedToLegal)}
+        disabled={
+          isLoading ||
+          !turnstileReady ||
+          (requiresLegalConsent && !agreedToLegal)
+        }
+        turnstile={{ token: turnstileToken, onConsume: resetTurnstile }}
         onWeChatLogin={hasWeChatLogin ? handleOpenWeChatDialog : undefined}
         isWeChatLoading={isWeChatSubmitting}
       />
@@ -349,9 +354,24 @@ export function UserAuthForm({
         className={cn('grid gap-4', className)}
         {...props}
       >
-        {hasAlternativeLogin && alternativeLoginMethods}
+        {hasAlternativeLogin && !showPasswordForm && alternativeLoginMethods}
 
-        {passwordLoginEnabled && (
+        {passwordLoginEnabled && hasAlternativeLogin && !showPasswordForm && (
+          <>
+            <p className='text-muted-foreground before:bg-border after:bg-border flex items-center gap-3 text-center text-xs before:h-px before:flex-1 after:h-px after:flex-1'>
+              {t('Or')}
+            </p>
+            <Button
+              type='button'
+              className='w-full rounded-full'
+              onClick={() => setShowPasswordForm(true)}
+            >
+              {t('Sign in with email or username')}
+            </Button>
+          </>
+        )}
+
+        {passwordLoginEnabled && (showPasswordForm || !hasAlternativeLogin) && (
           <>
             {/* Username Field */}
             <FormField
@@ -362,6 +382,7 @@ export function UserAuthForm({
                   <FormLabel>{t('Username or Email')}</FormLabel>
                   <FormControl>
                     <Input
+                      autoComplete='username'
                       placeholder={t('Enter your username or email')}
                       {...field}
                     />
@@ -380,6 +401,7 @@ export function UserAuthForm({
                   <FormLabel>{t('Password')}</FormLabel>
                   <FormControl>
                     <PasswordInput
+                      autoComplete='current-password'
                       placeholder={t('Enter password')}
                       {...field}
                     />
@@ -394,28 +416,6 @@ export function UserAuthForm({
                 </FormItem>
               )}
             />
-
-            {/* Submit Button */}
-            <Button
-              type='submit'
-              className='mt-2 w-full justify-center gap-2'
-              disabled={isLoading || (requiresLegalConsent && !agreedToLegal)}
-            >
-              {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
-              {t('Sign in')}
-            </Button>
-
-            {/* Turnstile */}
-            {isTurnstileEnabled && (
-              <div className='mt-2'>
-                <Turnstile
-                  key={turnstileWidgetKey}
-                  siteKey={turnstileSiteKey}
-                  onVerify={setTurnstileToken}
-                  onExpire={() => setTurnstileToken('')}
-                />
-              </div>
-            )}
           </>
         )}
 
@@ -425,6 +425,43 @@ export function UserAuthForm({
           onCheckedChange={setAgreedToLegal}
           className='mt-1'
         />
+
+        {passwordLoginEnabled && (showPasswordForm || !hasAlternativeLogin) && (
+          <Button
+            type='submit'
+            className='mt-2 w-full justify-center gap-2 rounded-full'
+            disabled={
+              isLoading ||
+              !turnstileReady ||
+              (requiresLegalConsent && !agreedToLegal)
+            }
+          >
+            {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
+            {t('Sign in')}
+          </Button>
+        )}
+
+        {hasAlternativeLogin && showPasswordForm && (
+          <Button
+            type='button'
+            variant='outline'
+            className='w-full rounded-full'
+            onClick={() => setShowPasswordForm(false)}
+          >
+            {t('Other login options')}
+          </Button>
+        )}
+
+        {isTurnstileEnabled && (
+          <div className='flex justify-center pt-3'>
+            <Turnstile
+              key={turnstileWidgetKey}
+              siteKey={turnstileSiteKey}
+              onVerify={setTurnstileToken}
+              onExpire={() => setTurnstileToken('')}
+            />
+          </div>
+        )}
 
         {!hasAlternativeLogin && alternativeLoginMethods}
       </form>

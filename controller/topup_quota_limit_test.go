@@ -201,3 +201,83 @@ func TestStripeCreditedQuotaIncludesGroupRatio(t *testing.T) {
 	require.NoError(t, common.UpdateTopupGroupRatioByJSONString(`{"free":0}`))
 	assert.True(t, decimal.NewFromInt(500000).Equal(getStripeCreditedQuota(1, "free")))
 }
+
+func TestRequestManualAlipayPayCreatesPendingOrderWithoutCreditingBalance(t *testing.T) {
+	oldDB := model.DB
+	oldQuotaPerUnit := common.QuotaPerUnit
+	oldPrice := operation_setting.Price
+	oldDisplayType := operation_setting.GetGeneralSetting().QuotaDisplayType
+	oldTopupGroupRatio := common.TopupGroupRatio2JSONString()
+	paymentSetting := operation_setting.GetPaymentSetting()
+	oldEnabled := paymentSetting.AlipayManualEnabled
+	oldQRCodeURL := paymentSetting.AlipayQRCodeURL
+	oldPayeeName := paymentSetting.AlipayPayeeName
+	oldComplianceConfirmed := paymentSetting.ComplianceConfirmed
+	oldComplianceVersion := paymentSetting.ComplianceTermsVersion
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}))
+	model.DB = db
+	common.QuotaPerUnit = 500000
+	operation_setting.Price = 7.3
+	operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeUSD
+	require.NoError(t, common.UpdateTopupGroupRatioByJSONString(`{"default":1}`))
+	paymentSetting.AlipayManualEnabled = true
+	paymentSetting.AlipayQRCodeURL = "https://static.example.com/alipay.png"
+	paymentSetting.AlipayPayeeName = "Test Payee"
+	paymentSetting.ComplianceConfirmed = true
+	paymentSetting.ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
+
+	t.Cleanup(func() {
+		model.DB = oldDB
+		common.QuotaPerUnit = oldQuotaPerUnit
+		operation_setting.Price = oldPrice
+		operation_setting.GetGeneralSetting().QuotaDisplayType = oldDisplayType
+		require.NoError(t, common.UpdateTopupGroupRatioByJSONString(oldTopupGroupRatio))
+		paymentSetting.AlipayManualEnabled = oldEnabled
+		paymentSetting.AlipayQRCodeURL = oldQRCodeURL
+		paymentSetting.AlipayPayeeName = oldPayeeName
+		paymentSetting.ComplianceConfirmed = oldComplianceConfirmed
+		paymentSetting.ComplianceTermsVersion = oldComplianceVersion
+		sqlDB, dbErr := db.DB()
+		if dbErr == nil {
+			require.NoError(t, sqlDB.Close())
+		}
+	})
+
+	require.NoError(t, db.Create(&model.User{
+		Id:       99,
+		Username: "manual_alipay_user",
+		Group:    "default",
+		Quota:    100,
+		Status:   common.UserStatusEnabled,
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Set("id", 99)
+	ctx.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/alipay/manual/pay",
+		strings.NewReader(`{"amount":10,"payment_method":"alipay_manual"}`),
+	)
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	RequestManualAlipayPay(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), `"message":"success"`)
+	assert.Contains(t, recorder.Body.String(), `"qr_code_url":"https://static.example.com/alipay.png"`)
+	assert.Contains(t, recorder.Body.String(), `"payee_name":"Test Payee"`)
+
+	var topUp model.TopUp
+	require.NoError(t, db.First(&topUp).Error)
+	assert.Equal(t, model.PaymentProviderAlipayManual, topUp.PaymentProvider)
+	assert.Equal(t, common.TopUpStatusPending, topUp.Status)
+	assert.Equal(t, float64(73), topUp.Money)
+
+	var user model.User
+	require.NoError(t, db.First(&user, 99).Error)
+	assert.Equal(t, 100, user.Quota)
+}

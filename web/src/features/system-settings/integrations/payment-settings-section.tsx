@@ -121,6 +121,12 @@ const paymentSchema = z.object({
       })
     }
   }),
+  AlipayManualEnabled: z.boolean(),
+  AlipayQRCodeURL: z.string().refine((value) => {
+    const trimmed = value.trim()
+    return !trimmed || trimmed.startsWith('https://')
+  }, 'Provide an HTTPS QR code image URL'),
+  AlipayPayeeName: z.string(),
   AmountOptions: z.string().superRefine((value, ctx) => {
     const error = getJsonError(value, (parsed) => Array.isArray(parsed))
     if (error) {
@@ -427,6 +433,9 @@ export function PaymentSettingsSection({
       MinTopUp: values.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(values.CustomCallbackAddress),
       PayMethods: values.PayMethods.trim(),
+      AlipayManualEnabled: values.AlipayManualEnabled,
+      AlipayQRCodeURL: values.AlipayQRCodeURL.trim(),
+      AlipayPayeeName: values.AlipayPayeeName.trim(),
       AmountOptions: values.AmountOptions.trim(),
       AmountDiscount: values.AmountDiscount.trim(),
       StripeApiSecret: values.StripeApiSecret.trim(),
@@ -471,6 +480,9 @@ export function PaymentSettingsSection({
         initialRef.current.CustomCallbackAddress
       ),
       PayMethods: initialRef.current.PayMethods.trim(),
+      AlipayManualEnabled: initialRef.current.AlipayManualEnabled,
+      AlipayQRCodeURL: initialRef.current.AlipayQRCodeURL.trim(),
+      AlipayPayeeName: initialRef.current.AlipayPayeeName.trim(),
       AmountOptions: initialRef.current.AmountOptions.trim(),
       AmountDiscount: initialRef.current.AmountDiscount.trim(),
       StripeApiSecret: initialRef.current.StripeApiSecret.trim(),
@@ -542,6 +554,25 @@ export function PaymentSettingsSection({
       normalizeJsonForComparison(initial.PayMethods)
     ) {
       updates.push({ key: 'PayMethods', value: sanitized.PayMethods })
+    }
+
+    if (sanitized.AlipayManualEnabled !== initial.AlipayManualEnabled) {
+      updates.push({
+        key: 'payment_setting.alipay_manual_enabled',
+        value: sanitized.AlipayManualEnabled,
+      })
+    }
+    if (sanitized.AlipayQRCodeURL !== initial.AlipayQRCodeURL) {
+      updates.push({
+        key: 'payment_setting.alipay_qr_code_url',
+        value: sanitized.AlipayQRCodeURL,
+      })
+    }
+    if (sanitized.AlipayPayeeName !== initial.AlipayPayeeName) {
+      updates.push({
+        key: 'payment_setting.alipay_payee_name',
+        value: sanitized.AlipayPayeeName,
+      })
     }
 
     if (
@@ -882,9 +913,12 @@ export function PaymentSettingsSection({
           />
           <Tabs defaultValue='general' className='min-w-0'>
             <div className='overflow-x-auto pb-1'>
-              <TabsList className='grid min-w-[44rem] grid-cols-6'>
+              <TabsList className='grid min-w-[52rem] grid-cols-7'>
                 <TabsTrigger value='general'>{t('General')}</TabsTrigger>
                 <TabsTrigger value='epay'>Epay</TabsTrigger>
+                <TabsTrigger value='alipay-manual'>
+                  {t('Alipay QR')}
+                </TabsTrigger>
                 <TabsTrigger value='stripe'>{t('Stripe')}</TabsTrigger>
                 <TabsTrigger value='creem'>Creem</TabsTrigger>
                 <TabsTrigger value='waffo-pancake'>Waffo Pancake</TabsTrigger>
@@ -1249,6 +1283,86 @@ export function PaymentSettingsSection({
                         </FormControl>
                         <FormDescription>
                           {t('Leave blank unless rotating the secret')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent
+              value='alipay-manual'
+              className={paymentTabContentClassName}
+            >
+              <div className='space-y-6'>
+                <div>
+                  <h3 className='text-lg font-medium'>{t('Alipay QR')}</h3>
+                  <p className='text-muted-foreground text-sm'>
+                    {t(
+                      'Creates pending orders for manual receipt verification. This does not read or monitor an Alipay account.'
+                    )}
+                  </p>
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name='AlipayManualEnabled'
+                  render={({ field }) => (
+                    <SettingsSwitchItem>
+                      <SettingsSwitchContent>
+                        <FormLabel>{t('Enable Alipay QR')}</FormLabel>
+                        <FormDescription>
+                          {t(
+                            'Only enable after uploading a valid collection QR code'
+                          )}
+                        </FormDescription>
+                      </SettingsSwitchContent>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </SettingsSwitchItem>
+                  )}
+                />
+
+                <div className='grid gap-6 md:grid-cols-2'>
+                  <FormField
+                    control={form.control}
+                    name='AlipayQRCodeURL'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('QR code image URL')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder='https://static.example.com/alipay.png'
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Use a stable HTTPS image URL; never enter account cookies or tokens'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='AlipayPayeeName'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Payee display name')}</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          {t('Helps users verify the recipient before paying')}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>

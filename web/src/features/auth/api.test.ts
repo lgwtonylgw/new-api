@@ -23,11 +23,34 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { api, type RefreshOutcome } from '@/lib/api'
 import type { AuthBundle } from '@/stores/auth-store'
 
-import { executeLogout } from './api'
+import { createOAuthAuthorization, executeLogout } from './api'
 import { useOAuthLogin } from './hooks/use-oauth-login'
 import { consumeOAuthLoginRedirect } from './lib/oauth-callback-mode'
 
 afterEach(() => vi.restoreAllMocks())
+
+test('sends the human verification token when starting third-party login', async () => {
+  const post = vi
+    .spyOn(api, 'post')
+    .mockResolvedValue({
+      data: { success: true, data: { flow_token: 'state' } },
+    })
+  await expect(
+    createOAuthAuthorization(
+      'oidc',
+      'login',
+      undefined,
+      undefined,
+      undefined,
+      'human-token'
+    )
+  ).resolves.toEqual({ state: 'state', authorizationUrl: undefined })
+  expect(post).toHaveBeenCalledWith(
+    '/api/oauth/state',
+    expect.objectContaining({ provider: 'oidc', intent: 'login' }),
+    expect.objectContaining({ params: { turnstile: 'human-token' } })
+  )
+})
 
 test.each([true, false])(
   'starts Telegram OAuth only when configuration is ready: %s',

@@ -177,6 +177,37 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	require.False(t, isEpayWebhookEnabled())
 }
 
+func TestManualAlipayTopUpRequiresComplianceToggleAndHTTPSQRCode(t *testing.T) {
+	paymentSetting := operation_setting.GetPaymentSetting()
+	originalEnabled := paymentSetting.AlipayManualEnabled
+	originalQRCodeURL := paymentSetting.AlipayQRCodeURL
+	originalComplianceConfirmed := paymentSetting.ComplianceConfirmed
+	originalComplianceVersion := paymentSetting.ComplianceTermsVersion
+	t.Cleanup(func() {
+		paymentSetting.AlipayManualEnabled = originalEnabled
+		paymentSetting.AlipayQRCodeURL = originalQRCodeURL
+		paymentSetting.ComplianceConfirmed = originalComplianceConfirmed
+		paymentSetting.ComplianceTermsVersion = originalComplianceVersion
+	})
+
+	paymentSetting.AlipayManualEnabled = true
+	paymentSetting.AlipayQRCodeURL = "https://static.example.com/alipay.png"
+	paymentSetting.ComplianceConfirmed = false
+	paymentSetting.ComplianceTermsVersion = ""
+	require.False(t, isManualAlipayTopUpEnabled())
+
+	paymentSetting.ComplianceConfirmed = true
+	paymentSetting.ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
+	require.True(t, isManualAlipayTopUpEnabled())
+
+	paymentSetting.AlipayQRCodeURL = "http://static.example.com/alipay.png"
+	require.False(t, isManualAlipayTopUpEnabled())
+
+	paymentSetting.AlipayQRCodeURL = "https://static.example.com/alipay.png"
+	paymentSetting.AlipayManualEnabled = false
+	require.False(t, isManualAlipayTopUpEnabled())
+}
+
 func TestEpayCallbacksVerifyBeforeSettlement(t *testing.T) {
 	confirmPaymentComplianceForTest(t)
 	originalPayAddress := operation_setting.PayAddress

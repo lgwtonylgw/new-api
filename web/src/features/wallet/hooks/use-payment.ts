@@ -29,15 +29,18 @@ import {
   calculateWaffoPancakeAmount,
   requestPayment,
   requestStripePayment,
+  requestManualAlipayPayment,
   isApiSuccess,
 } from '../api'
+import { PAYMENT_TYPES } from '../constants'
 import {
   isStripePayment,
+  isManualAlipayPayment,
   isWaffoPayment,
   isWaffoPancakePayment,
   submitPaymentForm,
 } from '../lib'
-import type { AmountRequest, AmountResponse } from '../types'
+import type { AmountRequest, AmountResponse, ManualAlipayOrder } from '../types'
 
 // ============================================================================
 // Payment Hook
@@ -85,6 +88,8 @@ export function usePayment() {
   const [amount, setAmount] = useState<number>(0)
   const [calculating, setCalculating] = useState(false)
   const [processing, setProcessing] = useState(false)
+  const [manualAlipayOrder, setManualAlipayOrder] =
+    useState<ManualAlipayOrder | null>(null)
 
   // Calculate payment amount
   const calculatePaymentAmount = useCallback(
@@ -114,32 +119,51 @@ export function usePayment() {
         setProcessing(true)
 
         const isStripe = isStripePayment(paymentType)
+        const isManualAlipay = isManualAlipayPayment(paymentType)
         const amount = Math.floor(topupAmount)
 
-        const response = isStripe
-          ? await requestStripePayment({
-              amount,
-              payment_method: 'stripe',
-            })
-          : await requestPayment({
-              amount,
-              payment_method: paymentType,
-            })
+        if (isStripe) {
+          const response = await requestStripePayment({
+            amount,
+            payment_method: PAYMENT_TYPES.STRIPE,
+          })
+          if (!isApiSuccess(response)) {
+            handleServerError(response, i18next.t('Payment request failed'))
+            return false
+          }
+          if (response.data?.pay_link) {
+            window.open(response.data.pay_link, '_blank')
+            toast.success(i18next.t('Redirecting to payment page...'))
+            return true
+          }
+          return false
+        }
 
+        if (isManualAlipay) {
+          const response = await requestManualAlipayPayment({
+            amount,
+            payment_method: PAYMENT_TYPES.ALIPAY_MANUAL,
+          })
+          if (!isApiSuccess(response)) {
+            handleServerError(response, i18next.t('Payment request failed'))
+            return false
+          }
+          if (response.data) {
+            setManualAlipayOrder(response.data)
+            return true
+          }
+          return false
+        }
+
+        const response = await requestPayment({
+          amount,
+          payment_method: paymentType,
+        })
         if (!isApiSuccess(response)) {
           handleServerError(response, i18next.t('Payment request failed'))
           return false
         }
-
-        // Handle Stripe payment
-        if (isStripe && response.data?.pay_link) {
-          window.open(response.data.pay_link as string, '_blank')
-          toast.success(i18next.t('Redirecting to payment page...'))
-          return true
-        }
-
-        // Handle non-Stripe payment
-        if (!isStripe && response.data) {
+        if (response.data) {
           const url = (response as unknown as { url?: string }).url
           if (url) {
             submitPaymentForm(url, response.data)
@@ -166,5 +190,7 @@ export function usePayment() {
     calculatePaymentAmount,
     processPayment,
     setAmount,
+    manualAlipayOrder,
+    clearManualAlipayOrder: () => setManualAlipayOrder(null),
   }
 }

@@ -62,6 +62,10 @@ const defaults: ComponentProps<typeof OAuthSection>['defaultValues'] = {
   LinuxDOClientSecret: '',
   LinuxDOMinimumTrustLevel: '',
   WeChatAuthEnabled: false,
+  WeChatAuthMode: 'external',
+  WeChatAppID: '',
+  WeChatCallbackToken: '',
+  WeChatEncodingAESKey: '',
   WeChatServerAddress: '',
   WeChatServerToken: '',
   WeChatAccountQRCodeImageURL: '',
@@ -114,6 +118,30 @@ beforeEach(async () => {
 })
 
 describe('OAuth settings saves', () => {
+  it('saves GitHub credentials before enabling login on first setup', async () => {
+    const user = userEvent.setup()
+    await renderSettings()
+    await user.type(
+      screen.getByRole('textbox', { name: 'Client ID' }),
+      'github-client'
+    )
+    await user.type(
+      screen.getByPlaceholderText('Your GitHub OAuth Client Secret'),
+      'github-secret'
+    )
+    await user.click(
+      screen.getByRole('switch', { name: 'Enable GitHub OAuth' })
+    )
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(3))
+    expect(vi.mocked(api.put).mock.calls.map((call) => call[1])).toEqual([
+      { key: 'GitHubClientId', value: 'github-client' },
+      { key: 'GitHubClientSecret', value: 'github-secret' },
+      { key: 'GitHubOAuthEnabled', value: true },
+    ])
+  })
+
   it.each([
     [false, 'provider.example.com/discovery'],
     [true, 'provider.example.com/discovery'],

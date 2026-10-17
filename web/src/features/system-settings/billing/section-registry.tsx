@@ -141,6 +141,10 @@ const BILLING_SECTIONS = [
           MinTopUp: settings.MinTopUp,
           CustomCallbackAddress: settings.CustomCallbackAddress,
           PayMethods: settings.PayMethods,
+          AlipayManualEnabled:
+            settings['payment_setting.alipay_manual_enabled'] ?? false,
+          AlipayQRCodeURL: settings['payment_setting.alipay_qr_code_url'] ?? '',
+          AlipayPayeeName: settings['payment_setting.alipay_payee_name'] ?? '',
           AmountOptions: settings['payment_setting.amount_options'],
           AmountDiscount: settings['payment_setting.amount_discount'],
           StripeApiSecret: settings.StripeApiSecret,

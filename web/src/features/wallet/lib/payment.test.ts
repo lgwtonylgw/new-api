@@ -24,6 +24,7 @@ import {
   isStripePayment,
   isWaffoPayment,
   isWaffoPancakePayment,
+  isManualAlipayPayment,
 } from './payment'
 
 describe('payment type classification', () => {
@@ -33,6 +34,11 @@ describe('payment type classification', () => {
     expect(isWaffoPancakePayment(PAYMENT_TYPES.WAFFO_PANCAKE)).toBe(true)
     expect(isWaffoPancakePayment(PAYMENT_TYPES.WAFFO)).toBe(false)
     expect(isStripePayment(PAYMENT_TYPES.STRIPE)).toBe(true)
+  })
+
+  test('identifies the manual Alipay flow separately from Epay Alipay', () => {
+    expect(isManualAlipayPayment(PAYMENT_TYPES.ALIPAY_MANUAL)).toBe(true)
+    expect(isManualAlipayPayment(PAYMENT_TYPES.ALIPAY)).toBe(false)
   })
 })
 

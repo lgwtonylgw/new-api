@@ -164,8 +164,8 @@ export function getLobeIcon(
     // Rspack applies webpackInclude before normalizing Windows path separators.
     IconComponent = lazy(() =>
       import(
-        /* webpackInclude: /[\\/]components[\\/](Mono|Avatar|Brand|BrandColor|Color|Combine|Text|TextCn|TextColor|Simple|Morden)\.js$/ */
-        `@lobehub/icons/es/${baseKey}/components/${variant}.js`
+        /* webpackInclude: /[\\/]components[\\/](Mono|Avatar|Brand|BrandColor|Color|Combine|Text|TextCn|TextColor|Simple|Morden)\.mjs$/ */
+        `@lobe-icons/${baseKey}/components/${variant}.mjs`
       ).catch(() => ({
         default: (props: Record<string, unknown>) =>
           renderLobeIconFallback(

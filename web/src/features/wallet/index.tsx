@@ -27,6 +27,7 @@ import { getSelf } from '@/lib/api'
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
+import { ManualAlipayDialog } from './components/dialogs/manual-alipay-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
 import { TransferDialog } from './components/dialogs/transfer-dialog'
 import { RechargeFormCard } from './components/recharge-form-card'
@@ -96,6 +97,8 @@ export function Wallet(props: WalletProps) {
     processing,
     calculatePaymentAmount,
     processPayment,
+    manualAlipayOrder,
+    clearManualAlipayOrder,
   } = usePayment()
   const {
     affiliateLink,
@@ -363,6 +366,13 @@ export function Wallet(props: WalletProps) {
         processing={processing || waffoProcessing || pancakeProcessing}
         discountRate={getDiscountRate()}
         usdExchangeRate={effectiveUsdExchangeRate}
+      />
+
+      <ManualAlipayDialog
+        order={manualAlipayOrder}
+        onOpenChange={(open) => {
+          if (!open) clearManualAlipayOrder()
+        }}
       />
 
       <TransferDialog

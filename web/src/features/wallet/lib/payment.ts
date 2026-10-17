@@ -93,6 +93,10 @@ export function isStripePayment(paymentType: string): boolean {
   return paymentType === PAYMENT_TYPES.STRIPE
 }
 
+export function isManualAlipayPayment(paymentType: string): boolean {
+  return paymentType === PAYMENT_TYPES.ALIPAY_MANUAL
+}
+
 /**
  * Check if payment method is Waffo
  */

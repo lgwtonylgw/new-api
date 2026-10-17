@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"maps"
 	"strconv"
 	"strings"
@@ -131,6 +132,9 @@ func InitOptionMap() {
 	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(setting.DefaultUseAutoGroup)
 	common.OptionMap["MaxTokenAutoGroups"] = strconv.Itoa(setting.GetMaxTokenAutoGroups())
 	common.OptionMap["PayMethods"] = operation_setting.PayMethods2JsonString()
+	common.OptionMap["payment_setting.alipay_manual_enabled"] = strconv.FormatBool(operation_setting.GetPaymentSetting().AlipayManualEnabled)
+	common.OptionMap["payment_setting.alipay_qr_code_url"] = operation_setting.GetPaymentSetting().AlipayQRCodeURL
+	common.OptionMap["payment_setting.alipay_payee_name"] = operation_setting.GetPaymentSetting().AlipayPayeeName
 	common.OptionMap["GitHubClientId"] = ""
 	common.OptionMap["GitHubClientSecret"] = ""
 	common.OptionMap["TelegramBotToken"] = ""
@@ -138,6 +142,10 @@ func InitOptionMap() {
 	common.OptionMap["WeChatServerAddress"] = ""
 	common.OptionMap["WeChatServerToken"] = ""
 	common.OptionMap["WeChatAccountQRCodeImageURL"] = ""
+	common.OptionMap["WeChatAuthMode"] = common.WeChatAuthMode
+	common.OptionMap["WeChatAppID"] = ""
+	common.OptionMap["WeChatCallbackToken"] = ""
+	common.OptionMap["WeChatEncodingAESKey"] = ""
 	common.OptionMap["TurnstileSiteKey"] = ""
 	common.OptionMap["TurnstileSecretKey"] = ""
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)
@@ -242,6 +250,9 @@ func validateOptionValue(key string, value string) error {
 	}
 	if key == "MaxTokenAutoGroups" {
 		return setting.ValidateMaxTokenAutoGroups(value)
+	}
+	if key == "WeChatAuthMode" && value != "builtin" && value != "external" {
+		return fmt.Errorf("invalid WeChat authentication mode")
 	}
 	return nil
 }
@@ -597,6 +608,14 @@ func updateOptionMap(key string, value string) (err error) {
 		common.WeChatServerToken = value
 	case "WeChatAccountQRCodeImageURL":
 		common.WeChatAccountQRCodeImageURL = value
+	case "WeChatAuthMode":
+		common.WeChatAuthMode = value
+	case "WeChatAppID":
+		common.WeChatAppID = value
+	case "WeChatCallbackToken":
+		common.WeChatCallbackToken = value
+	case "WeChatEncodingAESKey":
+		common.WeChatEncodingAESKey = value
 	case "TelegramBotToken":
 		common.TelegramBotToken = value
 	case "TelegramBotName":

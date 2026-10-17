@@ -7,16 +7,22 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
 	"github.com/QuantumNous/new-api/service"
@@ -29,6 +35,265 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+type authTurnstileTransport func(*http.Request) (*http.Response, error)
+
+func (transport authTurnstileTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	return transport(request)
+}
+
+func TestAuthTurnstileRejectsFailedResponsesAndReplay(t *testing.T) {
+	originalEnabled, originalSecret, originalTransport := common.TurnstileCheckEnabled, common.TurnstileSecretKey, http.DefaultTransport
+	common.TurnstileCheckEnabled, common.TurnstileSecretKey = true, "test-secret"
+	t.Cleanup(func() {
+		common.TurnstileCheckEnabled, common.TurnstileSecretKey, http.DefaultTransport = originalEnabled, originalSecret, originalTransport
+	})
+	for _, tc := range []struct {
+		name         string
+		status       int
+		body         string
+		networkError bool
+	}{
+		{"rejected token", http.StatusOK, `{"success":false}`, false},
+		{"invalid JSON", http.StatusOK, `invalid`, false},
+		{"upstream failure", http.StatusServiceUnavailable, `{"success":true}`, false},
+		{"network unavailable", 0, "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			http.DefaultTransport = authTurnstileTransport(func(request *http.Request) (*http.Response, error) {
+				if tc.networkError {
+					return nil, errors.New("unavailable")
+				}
+				return &http.Response{StatusCode: tc.status, Body: io.NopCloser(strings.NewReader(tc.body)), Header: make(http.Header)}, nil
+			})
+			response := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(response)
+			c.Request = httptest.NewRequest(http.MethodPost, "/?turnstile=token", nil)
+			assert.False(t, middleware.VerifyTurnstile(c))
+			assert.True(t, c.IsAborted())
+			assert.NotContains(t, response.Body.String(), "test-secret")
+		})
+	}
+	used := false
+	http.DefaultTransport = authTurnstileTransport(func(request *http.Request) (*http.Response, error) {
+		require.Equal(t, "challenges.cloudflare.com", request.URL.Host)
+		require.NoError(t, request.ParseForm())
+		require.Equal(t, "test-secret", request.Form.Get("secret"))
+		body := `{"success":true}`
+		if used {
+			body = `{"success":false,"error-codes":["timeout-or-duplicate"]}`
+		}
+		used = true
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})
+	for _, expected := range []bool{true, false} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/?turnstile=once", nil)
+		assert.Equal(t, expected, middleware.VerifyTurnstile(c))
+	}
+}
+
+func TestOAuthLoginRequiresTurnstileBeforeCreatingFlow(t *testing.T) {
+	original := common.TurnstileCheckEnabled
+	common.TurnstileCheckEnabled = true
+	t.Cleanup(func() { common.TurnstileCheckEnabled = original })
+	for _, provider := range []string{"github", "oidc", "telegram"} {
+		t.Run(provider, func(t *testing.T) {
+			body, err := common.Marshal(map[string]string{"provider": provider, "intent": "login"})
+			require.NoError(t, err)
+			response := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(response)
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/oauth/state", strings.NewReader(string(body)))
+			GenerateOAuthCode(c)
+			assert.True(t, c.IsAborted())
+			assert.Contains(t, response.Body.String(), "Turnstile token is empty")
+			assert.NotContains(t, response.Body.String(), "flow_token")
+		})
+	}
+}
+
+func TestOAuthEnableRejectsIncompleteCredentials(t *testing.T) {
+	originalID, originalSecret := common.GitHubClientId, common.GitHubClientSecret
+	originalOIDC := *system_setting.GetOIDCSettings()
+	originalAddress, originalToken, originalQR := common.WeChatServerAddress, common.WeChatServerToken, common.WeChatAccountQRCodeImageURL
+	originalMode, originalAppID := common.WeChatAuthMode, common.WeChatAppID
+	originalCallbackToken, originalAESKey := common.WeChatCallbackToken, common.WeChatEncodingAESKey
+	t.Cleanup(func() {
+		common.GitHubClientId, common.GitHubClientSecret = originalID, originalSecret
+		*system_setting.GetOIDCSettings() = originalOIDC
+		common.WeChatServerAddress, common.WeChatServerToken, common.WeChatAccountQRCodeImageURL = originalAddress, originalToken, originalQR
+		common.WeChatAuthMode, common.WeChatAppID = originalMode, originalAppID
+		common.WeChatCallbackToken, common.WeChatEncodingAESKey = originalCallbackToken, originalAESKey
+	})
+	for _, tc := range []struct {
+		name      string
+		key       string
+		configure func()
+	}{
+		{"GitHub missing secret", "GitHubOAuthEnabled", func() { common.GitHubClientId, common.GitHubClientSecret = "client", "" }},
+		{"GitHub whitespace ID", "GitHubOAuthEnabled", func() { common.GitHubClientId, common.GitHubClientSecret = " ", "secret" }},
+		{"Google OIDC missing secret", "oidc.enabled", func() {
+			system_setting.GetOIDCSettings().ClientId, system_setting.GetOIDCSettings().ClientSecret = "client", ""
+		}},
+		{"Google OIDC whitespace secret", "oidc.enabled", func() {
+			system_setting.GetOIDCSettings().ClientId, system_setting.GetOIDCSettings().ClientSecret = "client", " "
+		}},
+		{"WeChat missing token", "WeChatAuthEnabled", func() {
+			common.WeChatAuthMode = "external"
+			common.WeChatServerAddress, common.WeChatServerToken, common.WeChatAccountQRCodeImageURL = "https://wechat.example.com", "", "https://wechat.example.com/qr.png"
+		}},
+		{"WeChat missing QR", "WeChatAuthEnabled", func() {
+			common.WeChatAuthMode = "external"
+			common.WeChatServerAddress, common.WeChatServerToken, common.WeChatAccountQRCodeImageURL = "https://wechat.example.com", "secret", " "
+		}},
+		{"WeChat built-in missing AppID", "WeChatAuthEnabled", func() {
+			common.WeChatAuthMode = "builtin"
+			common.WeChatAppID, common.WeChatCallbackToken = "", "callback-token"
+			common.WeChatEncodingAESKey = strings.Repeat("a", 43)
+			common.WeChatAccountQRCodeImageURL = "https://wechat.example.com/qr.png"
+		}},
+		{"WeChat built-in invalid AES key", "WeChatAuthEnabled", func() {
+			common.WeChatAuthMode = "builtin"
+			common.WeChatAppID, common.WeChatCallbackToken = "wx-app", "callback-token"
+			common.WeChatEncodingAESKey = "invalid"
+			common.WeChatAccountQRCodeImageURL = "https://wechat.example.com/qr.png"
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.configure()
+			body, err := common.Marshal(map[string]any{"key": tc.key, "value": true})
+			require.NoError(t, err)
+			response := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(response)
+			c.Request = httptest.NewRequest(http.MethodPut, "/api/option/", strings.NewReader(string(body)))
+			UpdateOption(c)
+			var payload struct {
+				Success bool   `json:"success"`
+				Message string `json:"message"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
+			assert.Equal(t, http.StatusOK, response.Code)
+			assert.False(t, payload.Success)
+			assert.NotEmpty(t, payload.Message)
+		})
+	}
+}
+
+func TestWeChatBuiltInCallbackPlaintextIssuesSingleUseCode(t *testing.T) {
+	originalMode := common.WeChatAuthMode
+	originalToken := common.WeChatCallbackToken
+	originalRedisEnabled := common.RedisEnabled
+	common.WeChatAuthMode = "builtin"
+	common.WeChatCallbackToken = "callback-token"
+	common.RedisEnabled = false
+	t.Cleanup(func() {
+		common.WeChatAuthMode = originalMode
+		common.WeChatCallbackToken = originalToken
+		common.RedisEnabled = originalRedisEnabled
+	})
+
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	nonce := "plain-nonce"
+	signature := wechatSignature(common.WeChatCallbackToken, timestamp, nonce)
+	body := `<xml><ToUserName><![CDATA[official-account]]></ToUserName><FromUserName><![CDATA[user-openid-plain]]></FromUserName><CreateTime>1</CreateTime><MsgType><![CDATA[text]]></MsgType><Content><![CDATA[验证码]]></Content><MsgId>101</MsgId></xml>`
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/wechat/callback?timestamp="+timestamp+"&nonce="+nonce+"&signature="+signature, strings.NewReader(body))
+	WeChatCallback(c)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var reply wechatTextReply
+	require.NoError(t, xml.Unmarshal(response.Body.Bytes(), &reply))
+	require.Equal(t, "user-openid-plain", reply.ToUserName)
+	require.Equal(t, "official-account", reply.FromUserName)
+	code := regexp.MustCompile(`\d{6}`).FindString(reply.Content)
+	require.Len(t, code, 6)
+
+	openID, err := getWeChatIdByCode(code)
+	require.NoError(t, err)
+	assert.Equal(t, "user-openid-plain", openID)
+	_, err = getWeChatIdByCode(code)
+	assert.Error(t, err, "a consumed code must not be replayable")
+}
+
+func TestWeChatBuiltInCallbackSecureModeAndVerification(t *testing.T) {
+	originalAppID := common.WeChatAppID
+	originalToken := common.WeChatCallbackToken
+	originalAESKey := common.WeChatEncodingAESKey
+	originalRedisEnabled := common.RedisEnabled
+	common.WeChatAppID = "wx-test-app"
+	common.WeChatCallbackToken = "callback-token"
+	common.RedisEnabled = false
+	key := make([]byte, 32)
+	_, err := rand.Read(key)
+	require.NoError(t, err)
+	common.WeChatEncodingAESKey = strings.TrimRight(base64.StdEncoding.EncodeToString(key), "=")
+	t.Cleanup(func() {
+		common.WeChatAppID = originalAppID
+		common.WeChatCallbackToken = originalToken
+		common.WeChatEncodingAESKey = originalAESKey
+		common.RedisEnabled = originalRedisEnabled
+	})
+
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	nonce := "secure-nonce"
+	echoCiphertext, err := encryptWeChatPayload([]byte("verified-echo"), common.WeChatEncodingAESKey, common.WeChatAppID)
+	require.NoError(t, err)
+	echoSignature := wechatSignature(common.WeChatCallbackToken, timestamp, nonce, echoCiphertext)
+	verification := httptest.NewRecorder()
+	verifyContext, _ := gin.CreateTestContext(verification)
+	verifyContext.Request = httptest.NewRequest(http.MethodGet, "/api/wechat/callback?encrypt_type=aes&timestamp="+timestamp+"&nonce="+nonce+"&echostr="+url.QueryEscape(echoCiphertext)+"&msg_signature="+echoSignature, nil)
+	WeChatCallbackVerification(verifyContext)
+	require.Equal(t, http.StatusOK, verification.Code)
+	assert.Equal(t, "verified-echo", verification.Body.String())
+
+	inner := `<xml><ToUserName><![CDATA[official-account]]></ToUserName><FromUserName><![CDATA[user-openid-secure]]></FromUserName><CreateTime>1</CreateTime><MsgType><![CDATA[text]]></MsgType><Content><![CDATA[驗證碼]]></Content><MsgId>202</MsgId></xml>`
+	ciphertext, err := encryptWeChatPayload([]byte(inner), common.WeChatEncodingAESKey, common.WeChatAppID)
+	require.NoError(t, err)
+	signature := wechatSignature(common.WeChatCallbackToken, timestamp, nonce, ciphertext)
+	body := `<xml><ToUserName><![CDATA[official-account]]></ToUserName><Encrypt><![CDATA[` + ciphertext + `]]></Encrypt></xml>`
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/wechat/callback?encrypt_type=aes&timestamp="+timestamp+"&nonce="+nonce+"&msg_signature="+signature, strings.NewReader(body))
+	WeChatCallback(c)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var encryptedReply wechatEncryptedReply
+	require.NoError(t, xml.Unmarshal(response.Body.Bytes(), &encryptedReply))
+	assert.True(t, verifyWeChatSignature(encryptedReply.Signature, common.WeChatCallbackToken, strconv.FormatInt(encryptedReply.Timestamp, 10), encryptedReply.Nonce, encryptedReply.Encrypt))
+	decryptedReply, err := decryptWeChatPayload(encryptedReply.Encrypt, common.WeChatEncodingAESKey, common.WeChatAppID)
+	require.NoError(t, err)
+	var reply wechatTextReply
+	require.NoError(t, xml.Unmarshal([]byte(decryptedReply), &reply))
+	assert.Equal(t, "user-openid-secure", reply.ToUserName)
+}
+
+func TestWeChatCallbackRejectsTamperingAndStaleRequests(t *testing.T) {
+	originalToken := common.WeChatCallbackToken
+	common.WeChatCallbackToken = "callback-token"
+	t.Cleanup(func() { common.WeChatCallbackToken = originalToken })
+
+	for _, tc := range []struct {
+		name      string
+		timestamp string
+		signature string
+	}{
+		{name: "tampered signature", timestamp: strconv.FormatInt(time.Now().Unix(), 10), signature: "invalid"},
+		{name: "stale timestamp", timestamp: strconv.FormatInt(time.Now().Add(-10*time.Minute).Unix(), 10)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			signature := tc.signature
+			if signature == "" {
+				signature = wechatSignature(common.WeChatCallbackToken, tc.timestamp, "nonce")
+			}
+			response := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(response)
+			c.Request = httptest.NewRequest(http.MethodGet, "/api/wechat/callback?timestamp="+tc.timestamp+"&nonce=nonce&echostr=echo&signature="+signature, nil)
+			WeChatCallbackVerification(c)
+			assert.Equal(t, http.StatusForbidden, response.Code)
+		})
+	}
+}
 
 func newSecurityLoginPasskey(t *testing.T, userID int) *ecdsa.PrivateKey {
 	t.Helper()

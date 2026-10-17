@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { SiGoogle } from 'react-icons/si'
 
 import {
   IconDiscord,
@@ -39,6 +40,7 @@ type OAuthProvidersProps = {
   onWeChatLogin?: () => void
   isWeChatLoading?: boolean
   redirectTo?: string
+  turnstile?: { token: string; onConsume: () => void }
 }
 
 type ProviderButton = {
@@ -56,6 +58,7 @@ export function OAuthProviders({
   onWeChatLogin,
   isWeChatLoading = false,
   redirectTo,
+  turnstile,
 }: OAuthProvidersProps) {
   const { t } = useTranslation()
   const {
@@ -68,7 +71,7 @@ export function OAuthProviders({
     handleLinuxDOLogin,
     handleTelegramLogin,
     handleCustomOAuthLogin,
-  } = useOAuthLogin(status, redirectTo)
+  } = useOAuthLogin(status, redirectTo, turnstile)
 
   const providerButtons: ProviderButton[] = []
 
@@ -109,6 +112,10 @@ export function OAuthProviders({
         name: oidcDisplayName,
       }),
       onClick: handleOIDCLogin,
+      icon:
+        oidcDisplayName.toLowerCase() === 'google' ? (
+          <SiGoogle className='h-4 w-4 text-[#4285f4]' />
+        ) : undefined,
     })
   }
 
@@ -146,17 +153,6 @@ export function OAuthProviders({
 
   return (
     <div className={cn('space-y-3', className)}>
-      <div className='relative'>
-        <div className='absolute inset-0 flex items-center'>
-          <span className='w-full border-t' />
-        </div>
-        <div className='relative flex justify-center text-xs uppercase'>
-          <span className='bg-background text-muted-foreground px-2'>
-            {t('Or continue with')}
-          </span>
-        </div>
-      </div>
-
       <div className='flex flex-col gap-2'>
         {providerButtons.map(
           ({ key, label, onClick, icon, disabled: extraDisabled }) => (
@@ -166,9 +162,13 @@ export function OAuthProviders({
               type='button'
               disabled={disabled || isLoading || extraDisabled}
               onClick={onClick}
-              className='h-11 w-full justify-center gap-2 rounded-lg'
+              className={cn(
+                'h-10 w-full justify-center gap-3 rounded-full',
+                key === 'telegram' && 'border-sky-400/50 text-sky-600',
+                key === 'wechat' && '[&_svg]:text-emerald-500'
+              )}
             >
-              {icon}
+              <span aria-hidden='true'>{icon}</span>
               {label}
             </Button>
           )

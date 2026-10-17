@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import type { z } from 'zod'
@@ -61,6 +61,7 @@ export function SignUpForm({
 }: React.HTMLAttributes<HTMLFormElement>) {
   const { t } = useTranslation()
   const [isLoading, setIsLoading] = useState(false)
+  const [showPasswordForm, setShowPasswordForm] = useState(false)
   const [verificationCode, setVerificationCode] = useState('')
   const [agreedToLegal, setAgreedToLegal] = useState(false)
   const [wechatCode, setWeChatCode] = useState('')
@@ -98,7 +99,7 @@ export function SignUpForm({
     },
   })
 
-  const emailValue = form.watch('email')
+  const emailValue = useWatch({ control: form.control, name: 'email' })
   const emailVerificationRequired = !!status?.email_verification
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
   const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
@@ -109,6 +110,22 @@ export function SignUpForm({
     true
   const hasWeChatLogin = Boolean(status?.wechat_login)
   const turnstileReady = !isTurnstileEnabled || Boolean(turnstileToken)
+  const hasOAuthLogin =
+    oauthRegisterEnabled &&
+    Boolean(
+      status?.wechat_login ||
+      status?.github_oauth ||
+      status?.oidc_enabled ||
+      status?.telegram_oauth ||
+      status?.discord_oauth ||
+      status?.linuxdo_oauth ||
+      status?.custom_oauth_providers?.length
+    )
+  const passwordRegisterEnabled = status?.password_register_enabled !== false
+  const resetTurnstile = () => {
+    setTurnstileToken('')
+    setTurnstileWidgetKey((current) => current + 1)
+  }
 
   const wechatQrCodeUrl = useMemo(() => {
     return (
@@ -123,14 +140,6 @@ export function SignUpForm({
       ''
     )
   }, [status])
-
-  useEffect(() => {
-    if (requiresLegalConsent) {
-      setAgreedToLegal(false)
-    } else {
-      setAgreedToLegal(true)
-    }
-  }, [requiresLegalConsent])
 
   useEffect(() => {
     const aff = new URLSearchParams(window.location.search).get('aff')?.trim()
@@ -182,13 +191,15 @@ export function SignUpForm({
       )
     } finally {
       setIsLoading(false)
+      resetTurnstile()
     }
   }
 
   async function handleSendVerificationCode() {
-    if (await sendCode(emailValue || '')) {
-      setTurnstileToken('')
-      setTurnstileWidgetKey((current) => current + 1)
+    try {
+      await sendCode(emailValue || '')
+    } finally {
+      resetTurnstile()
     }
   }
 
@@ -210,6 +221,7 @@ export function SignUpForm({
   }
 
   async function handleWeChatLogin() {
+    if (!validateTurnstile()) return
     if (!wechatCode.trim()) {
       toast.error(t('Please enter the verification code'))
       return
@@ -217,7 +229,7 @@ export function SignUpForm({
 
     setIsWeChatSubmitting(true)
     try {
-      const res = await wechatLoginByCode(wechatCode)
+      const res = await wechatLoginByCode(wechatCode, turnstileToken)
       if (res?.success) {
         handleWeChatDialogChange(false)
         if (await handleLoginResult(res.data)) {
@@ -232,6 +244,7 @@ export function SignUpForm({
       )
     } finally {
       setIsWeChatSubmitting(false)
+      resetTurnstile()
     }
   }
 
@@ -251,70 +264,46 @@ export function SignUpForm({
         className={cn('grid gap-4', className)}
         {...props}
       >
-        {/* Username Field */}
-        <FormField
-          control={form.control}
-          name='username'
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Username')}</FormLabel>
-              <FormControl>
-                <Input placeholder={t('Enter your username')} {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* Password Field */}
-        <FormField
-          control={form.control}
-          name='password'
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Password')}</FormLabel>
-              <FormControl>
-                <PasswordInput
-                  placeholder={t('Enter password (8–128 characters)')}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* Confirm Password Field */}
-        <FormField
-          control={form.control}
-          name='confirmPassword'
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Confirm password')}</FormLabel>
-              <FormControl>
-                <PasswordInput placeholder={t('Confirm password')} {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* Email Verification Section */}
-        {emailVerificationRequired && (
+        {hasOAuthLogin && !showPasswordForm && (
+          <OAuthProviders
+            status={status}
+            disabled={
+              isLoading ||
+              !turnstileReady ||
+              (requiresLegalConsent && !agreedToLegal)
+            }
+            turnstile={{ token: turnstileToken, onConsume: resetTurnstile }}
+            onWeChatLogin={hasWeChatLogin ? handleOpenWeChatDialog : undefined}
+            isWeChatLoading={isWeChatSubmitting}
+          />
+        )}
+        {passwordRegisterEnabled && hasOAuthLogin && !showPasswordForm && (
           <>
-            {/* Email Field */}
+            <p className='text-muted-foreground before:bg-border after:bg-border flex items-center gap-3 text-center text-xs before:h-px before:flex-1 after:h-px after:flex-1'>
+              {t('Or')}
+            </p>
+            <Button
+              type='button'
+              className='w-full rounded-full'
+              onClick={() => setShowPasswordForm(true)}
+            >
+              {t('Sign up with username')}
+            </Button>
+          </>
+        )}
+        {passwordRegisterEnabled && (showPasswordForm || !hasOAuthLogin) && (
+          <>
+            {/* Username Field */}
             <FormField
               control={form.control}
-              name='email'
+              name='username'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>
-                    {t('Email (required for verification)')}
-                  </FormLabel>
+                  <FormLabel>{t('Username')}</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder={t('name@example.com')}
-                      type='email'
+                      autoComplete='username'
+                      placeholder={t('Enter your username')}
                       {...field}
                     />
                   </FormControl>
@@ -323,30 +312,97 @@ export function SignUpForm({
               )}
             />
 
-            {/* Verification Code Field */}
-            <div className='flex items-end gap-2'>
-              <div className='flex-1'>
-                <Input
-                  placeholder={t('Verification code')}
-                  value={verificationCode}
-                  onChange={(e) => setVerificationCode(e.target.value)}
+            {/* Password Field */}
+            <FormField
+              control={form.control}
+              name='password'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Password')}</FormLabel>
+                  <FormControl>
+                    <PasswordInput
+                      autoComplete='new-password'
+                      placeholder={t('Enter password (8–128 characters)')}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Confirm Password Field */}
+            <FormField
+              control={form.control}
+              name='confirmPassword'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Confirm password')}</FormLabel>
+                  <FormControl>
+                    <PasswordInput
+                      autoComplete='new-password'
+                      placeholder={t('Confirm password')}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Email Verification Section */}
+            {emailVerificationRequired && (
+              <>
+                {/* Email Field */}
+                <FormField
+                  control={form.control}
+                  name='email'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        {t('Email (required for verification)')}
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          autoComplete='email'
+                          placeholder={t('name@example.com')}
+                          type='email'
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              <Button
-                variant='outline'
-                type='button'
-                disabled={
-                  isLoading ||
-                  isSendingCode ||
-                  isActive ||
-                  !emailValue ||
-                  !turnstileReady
-                }
-                onClick={handleSendVerificationCode}
-              >
-                {verificationCodeAction}
-              </Button>
-            </div>
+
+                {/* Verification Code Field */}
+                <div className='flex items-end gap-2'>
+                  <div className='flex-1'>
+                    <Input
+                      aria-label={t('Verification code')}
+                      autoComplete='one-time-code'
+                      placeholder={t('Verification code')}
+                      value={verificationCode}
+                      onChange={(e) => setVerificationCode(e.target.value)}
+                    />
+                  </div>
+                  <Button
+                    variant='outline'
+                    type='button'
+                    disabled={
+                      isLoading ||
+                      isSendingCode ||
+                      isActive ||
+                      !emailValue ||
+                      !turnstileReady
+                    }
+                    onClick={handleSendVerificationCode}
+                  >
+                    {verificationCodeAction}
+                  </Button>
+                </div>
+              </>
+            )}
           </>
         )}
 
@@ -357,6 +413,7 @@ export function SignUpForm({
               key={turnstileWidgetKey}
               siteKey={turnstileSiteKey}
               onVerify={setTurnstileToken}
+              onExpire={() => setTurnstileToken('')}
             />
           </div>
         )}
@@ -369,27 +426,30 @@ export function SignUpForm({
         />
 
         {/* Submit Button */}
-        <Button
-          type='submit'
-          className='mt-2 w-full justify-center gap-2'
-          disabled={
-            isLoading ||
-            (requiresLegalConsent && !agreedToLegal) ||
-            !turnstileReady
-          }
-        >
-          {isLoading ? <Loader2 className='h-4 w-4 animate-spin' /> : null}
-          {t('Create account')}
-        </Button>
+        {passwordRegisterEnabled && (showPasswordForm || !hasOAuthLogin) && (
+          <Button
+            type='submit'
+            className='mt-2 w-full justify-center gap-2'
+            disabled={
+              isLoading ||
+              (requiresLegalConsent && !agreedToLegal) ||
+              !turnstileReady
+            }
+          >
+            {isLoading ? <Loader2 className='h-4 w-4 animate-spin' /> : null}
+            {t('Create account')}
+          </Button>
+        )}
 
-        {oauthRegisterEnabled && (
-          <OAuthProviders
-            status={status}
-            disabled={isLoading || (requiresLegalConsent && !agreedToLegal)}
-            onWeChatLogin={hasWeChatLogin ? handleOpenWeChatDialog : undefined}
-            isWeChatLoading={isWeChatSubmitting}
-            className='pt-2'
-          />
+        {hasOAuthLogin && showPasswordForm && (
+          <Button
+            type='button'
+            variant='outline'
+            className='w-full rounded-full'
+            onClick={() => setShowPasswordForm(false)}
+          >
+            {t('Other registration options')}
+          </Button>
         )}
       </form>
 

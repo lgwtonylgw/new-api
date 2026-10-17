@@ -20,7 +20,11 @@ import i18n from 'i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
 import { initReactI18next } from 'react-i18next'
 
-import { convertDetectedLanguage } from './languages'
+import {
+  convertDetectedLanguage,
+  DEFAULT_INTERFACE_LANGUAGE,
+  toIntlLocale,
+} from './languages'
 import en from './locales/en.json'
 import fr from './locales/fr.json'
 import ja from './locales/ja.json'
@@ -30,13 +34,13 @@ import zhTW from './locales/zh-TW.json'
 import zhCN from './locales/zh.json'
 
 export const resources = {
-  en,
+  zhTW,
   zhCN,
+  en,
   fr,
   ru,
   ja,
   vi,
-  zhTW,
 } as const
 
 i18n
@@ -44,8 +48,8 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    fallbackLng: 'en',
-    supportedLngs: ['en', 'zhCN', 'fr', 'ru', 'ja', 'vi', 'zhTW'],
+    fallbackLng: DEFAULT_INTERFACE_LANGUAGE,
+    supportedLngs: ['zhTW', 'zhCN', 'en', 'fr', 'ru', 'ja', 'vi'],
     load: 'currentOnly',
     nsSeparator: false, // Allow literal colons in keys (e.g., URLs, labels)
     debug: import.meta.env.DEV,
@@ -53,12 +57,20 @@ i18n
       escapeValue: false, // not needed for react as it escapes by default
     },
     detection: {
-      order: ['localStorage', 'navigator'],
+      // First-time visitors use Traditional Chinese. Once selected, a user's
+      // explicit choice is restored from localStorage.
+      order: ['localStorage'],
       caches: ['localStorage'],
-      // Browsers report `zh-CN`/`zh-TW`/`zh`; map them onto our `zhCN`/`zhTW`
-      // codes (non-Chinese codes pass through for normal supportedLngs matching).
+      // Normalize cached BCP-47 and interface-specific language codes.
       convertDetectedLanguage,
     },
   })
+
+function syncDocumentLanguage(language: string) {
+  document.documentElement.lang = toIntlLocale(language) ?? 'zh-TW'
+}
+
+i18n.on('languageChanged', syncDocumentLanguage)
+syncDocumentLanguage(i18n.resolvedLanguage || i18n.language)
 
 export default i18n

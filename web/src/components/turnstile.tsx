@@ -16,12 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useRef } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import { Button } from '@/components/ui/button'
 
 declare global {
   interface Window {
     turnstile?: {
-      render: (element: HTMLElement, options: Record<string, unknown>) => void
+      render: (element: HTMLElement, options: Record<string, unknown>) => string
+      remove: (widgetId: string) => void
     }
   }
 }
@@ -40,37 +44,101 @@ export function Turnstile({
   className,
 }: TurnstileProps) {
   const ref = useRef<HTMLDivElement | null>(null)
+  const { t } = useTranslation()
+  const [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  const verified = useEffectEvent((token: string) => onVerify(token))
+  const expired = useEffectEvent(() => onExpire?.())
 
   useEffect(() => {
+    let disposed = false
+    let widgetId: string | undefined
+    const fail = () => {
+      if (disposed) return
+      expired()
+      setFailed(true)
+    }
     const render = () => {
-      if (!ref.current || !window.turnstile) return
+      if (
+        disposed ||
+        widgetId !== undefined ||
+        !ref.current ||
+        !window.turnstile
+      ) {
+        return
+      }
       try {
-        window.turnstile.render(ref.current, {
+        widgetId = window.turnstile.render(ref.current, {
           sitekey: siteKey,
-          callback: (token: string) => onVerify(token),
-          'error-callback': () => onExpire?.(),
-          'expired-callback': () => onExpire?.(),
+          size:
+            ref.current.clientWidth > 0 && ref.current.clientWidth < 300
+              ? 'compact'
+              : 'flexible',
+          callback: (token: string) => {
+            if (!disposed) verified(token)
+          },
+          'error-callback': fail,
+          'expired-callback': () => {
+            if (!disposed) expired()
+          },
         })
       } catch {
-        /* empty */
+        fail()
       }
     }
 
+    const scriptId = 'cf-turnstile'
+    let script = document.querySelector<HTMLScriptElement>(`#${scriptId}`)
+    const scriptFailed = () => {
+      script?.remove()
+      fail()
+    }
     if (window.turnstile) {
       render()
-      return
+    } else {
+      const created = !script
+      if (!script) {
+        script = document.createElement('script')
+        script.id = scriptId
+        script.src =
+          'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
+        script.async = true
+        script.defer = true
+      }
+      script.addEventListener('load', render)
+      script.addEventListener('error', scriptFailed)
+      if (created) document.head.appendChild(script)
     }
-    const scriptId = 'cf-turnstile'
-    if (document.getElementById(scriptId)) return
-    const s = document.createElement('script')
-    s.id = scriptId
-    s.src =
-      'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
-    s.async = true
-    s.defer = true
-    s.onload = () => render()
-    document.head.appendChild(s)
-  }, [siteKey, onVerify, onExpire])
+    return () => {
+      disposed = true
+      script?.removeEventListener('load', render)
+      script?.removeEventListener('error', scriptFailed)
+      if (widgetId !== undefined) window.turnstile?.remove(widgetId)
+    }
+  }, [siteKey, attempt])
 
-  return <div ref={ref} className={className} />
+  return (
+    <div className={className || 'w-full max-w-[300px]'}>
+      <div ref={ref} />
+      {failed && (
+        <div
+          role='alert'
+          className='text-muted-foreground space-y-2 text-center text-xs'
+        >
+          <p>{t('Human verification could not load. Please try again.')}</p>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            onClick={() => {
+              setFailed(false)
+              setAttempt((current) => current + 1)
+            }}
+          >
+            {t('Retry')}
+          </Button>
+        </div>
+      )}
+    </div>
+  )
 }
