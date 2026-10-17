@@ -46,6 +46,7 @@ import (
 const (
 	wechatCallbackTimestampTolerance = 5 * time.Minute
 	wechatCallbackMaxBodyBytes       = 256 * 1024
+	wechatSubscribeReply             = "欢迎关注。需要登录网站时，请回复“验证码”获取3分钟有效的登录验证码。"
 )
 
 type wechatCallbackMessage struct {
@@ -54,6 +55,7 @@ type wechatCallbackMessage struct {
 	FromUserName string   `xml:"FromUserName"`
 	CreateTime   int64    `xml:"CreateTime"`
 	MsgType      string   `xml:"MsgType"`
+	Event        string   `xml:"Event"`
 	Content      string   `xml:"Content"`
 	MsgID        int64    `xml:"MsgId"`
 	Encrypt      string   `xml:"Encrypt"`
@@ -151,14 +153,20 @@ func WeChatCallback(c *gin.Context) {
 		return
 	}
 
-	if envelope.MsgType != "text" || !isWeChatVerificationKeyword(envelope.Content) {
+	var replyContent string
+	switch {
+	case envelope.MsgType == "event" && strings.EqualFold(strings.TrimSpace(envelope.Event), "subscribe"):
+		replyContent = wechatSubscribeReply
+	case envelope.MsgType == "text" && isWeChatVerificationKeyword(envelope.Content):
+		code, err := service.IssueWeChatVerificationCode(c.Request.Context(), strings.TrimSpace(envelope.FromUserName))
+		if err != nil {
+			common.SysError(common.LogText("failed to issue WeChat verification code: %s", err.Error()))
+			c.String(http.StatusInternalServerError, "temporary failure")
+			return
+		}
+		replyContent = fmt.Sprintf("登录验证码：%s（3 分钟内有效，请勿转发）", code)
+	default:
 		c.String(http.StatusOK, "success")
-		return
-	}
-	code, err := service.IssueWeChatVerificationCode(c.Request.Context(), strings.TrimSpace(envelope.FromUserName))
-	if err != nil {
-		common.SysError(common.LogText("failed to issue WeChat verification code: %s", err.Error()))
-		c.String(http.StatusInternalServerError, "temporary failure")
 		return
 	}
 	replyBytes, err := xml.Marshal(wechatTextReply{
@@ -166,7 +174,7 @@ func WeChatCallback(c *gin.Context) {
 		FromUserName: envelope.ToUserName,
 		CreateTime:   time.Now().Unix(),
 		MsgType:      "text",
-		Content:      fmt.Sprintf("登录验证码：%s（3 分钟内有效，请勿转发）", code),
+		Content:      replyContent,
 	})
 	if err != nil {
 		c.String(http.StatusInternalServerError, "temporary failure")

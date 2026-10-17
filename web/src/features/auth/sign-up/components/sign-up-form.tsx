@@ -68,7 +68,9 @@ export function SignUpForm({
   const [isWeChatDialogOpen, setIsWeChatDialogOpen] = useState(false)
   const [isWeChatSubmitting, setIsWeChatSubmitting] = useState(false)
   const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0)
-  const legalConsentErrorMessage = t('Please agree to the legal terms first')
+  const legalConsentErrorMessage = t(
+    'Please read and agree to the User Agreement and Privacy Policy first'
+  )
 
   const { status } = useStatus()
   const {
@@ -463,10 +465,13 @@ export function SignUpForm({
           description={t(
             'Scan the QR code to follow the official account and reply with “验证码” to receive your verification code.'
           )}
-          contentClassName='max-w-sm'
+          contentClassName='sm:max-w-md'
           headerClassName='text-left'
+          titleClassName='text-lg font-semibold'
+          descriptionClassName='sr-only'
           contentHeight='auto'
-          bodyClassName='space-y-4'
+          bodyClassName='space-y-5'
+          footerClassName='border-t-0 bg-transparent pt-2'
           footer={
             <>
               <Button
@@ -492,11 +497,11 @@ export function SignUpForm({
           }
         >
           {wechatQrCodeUrl ? (
-            <div className='flex justify-center'>
+            <div className='flex justify-center py-1'>
               <img
                 src={wechatQrCodeUrl}
                 alt={t('WeChat login QR code')}
-                className='h-40 w-40 rounded-md border object-contain'
+                className='h-64 w-64 rounded-md border object-contain sm:h-[21rem] sm:w-[21rem]'
               />
             </div>
           ) : (
@@ -504,6 +509,11 @@ export function SignUpForm({
               {t('QR code is not configured. Please contact support.')}
             </p>
           )}
+          <p className='text-muted-foreground text-center text-sm leading-6'>
+            {t(
+              'Scan the QR code to follow the official account and reply with “验证码” to receive your verification code.'
+            )}
+          </p>
           <div className='grid gap-2'>
             <Label htmlFor='wechat-code'>{t('Verification code')}</Label>
             <Input

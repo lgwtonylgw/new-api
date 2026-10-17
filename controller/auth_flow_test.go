@@ -258,6 +258,29 @@ func TestWeChatBuiltInCallbackPlaintextIssuesSingleUseCode(t *testing.T) {
 	assert.Error(t, err, "a consumed code must not be replayable")
 }
 
+func TestWeChatBuiltInCallbackRepliesToSubscribeEvent(t *testing.T) {
+	originalToken := common.WeChatCallbackToken
+	common.WeChatCallbackToken = "callback-token"
+	t.Cleanup(func() { common.WeChatCallbackToken = originalToken })
+
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	nonce := "subscribe-nonce"
+	signature := wechatSignature(common.WeChatCallbackToken, timestamp, nonce)
+	body := `<xml><ToUserName><![CDATA[official-account]]></ToUserName><FromUserName><![CDATA[new-follower-openid]]></FromUserName><CreateTime>1</CreateTime><MsgType><![CDATA[event]]></MsgType><Event><![CDATA[subscribe]]></Event></xml>`
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/wechat/callback?timestamp="+timestamp+"&nonce="+nonce+"&signature="+signature, strings.NewReader(body))
+
+	WeChatCallback(c)
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	var reply wechatTextReply
+	require.NoError(t, xml.Unmarshal(response.Body.Bytes(), &reply))
+	assert.Equal(t, "new-follower-openid", reply.ToUserName)
+	assert.Equal(t, "official-account", reply.FromUserName)
+	assert.Equal(t, wechatSubscribeReply, reply.Content)
+}
+
 func TestWeChatBuiltInCallbackSecureModeAndVerification(t *testing.T) {
 	originalAppID := common.WeChatAppID
 	originalToken := common.WeChatCallbackToken
