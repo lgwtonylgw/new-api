@@ -16,7 +16,7 @@ const requiredEmailVerificationMigrationKey = "_migration.require_email_verifica
 func migrateRequiredEmailVerification(db *gorm.DB) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		var marker Option
-		err := tx.Where("key = ?", requiredEmailVerificationMigrationKey).First(&marker).Error
+		err := tx.Where(&Option{Key: requiredEmailVerificationMigrationKey}).First(&marker).Error
 		if err == nil {
 			return nil
 		}
