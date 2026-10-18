@@ -40,8 +40,7 @@ import type { SystemStatus, CustomOAuthProviderInfo } from '../types'
  */
 export function useOAuthLogin(
   status: SystemStatus | null,
-  redirectTo?: string,
-  turnstile?: { token: string; onConsume: () => void }
+  redirectTo?: string
 ) {
   const { t } = useTranslation()
   const [isLoading, setIsLoading] = useState(false)
@@ -49,20 +48,8 @@ export function useOAuthLogin(
   const [githubButtonDisabled, setGithubButtonDisabled] = useState(false)
   const githubTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  const startAuthorization = async (provider: string) => {
-    try {
-      return await createOAuthAuthorization(
-        provider,
-        'login',
-        undefined,
-        undefined,
-        undefined,
-        turnstile?.token
-      )
-    } finally {
-      turnstile?.onConsume()
-    }
-  }
+  const startAuthorization = async (provider: string) =>
+    createOAuthAuthorization(provider, 'login')
 
   useEffect(() => {
     return () => {

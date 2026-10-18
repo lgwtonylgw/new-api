@@ -118,6 +118,18 @@ beforeEach(async () => {
 })
 
 describe('OAuth settings saves', () => {
+  it('shows both Telegram URLs required by BotFather', async () => {
+    const user = userEvent.setup()
+    await renderSettings()
+
+    await user.click(screen.getByRole('tab', { name: 'Telegram' }))
+
+    expect(screen.getByText('https://gateway.example.com')).toBeVisible()
+    expect(
+      screen.getByText('https://gateway.example.com/oauth/telegram')
+    ).toBeVisible()
+  })
+
   it('renders stored OAuth credentials as visible text', async () => {
     const user = userEvent.setup()
     await renderSettings({

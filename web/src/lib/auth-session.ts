@@ -79,6 +79,7 @@ const authClient = axios.create({
 const refreshRaceDelays = [80, 200, 500] as const
 let refreshPromise: Promise<RefreshOutcome> | null = null
 let authEpoch = 0
+let authenticationSignOuts = 0
 
 class AuthRefreshSupersededError extends Error {
   constructor() {
@@ -194,6 +195,25 @@ export function clearAuthentication(
   if (synchronizeTabs && sid) {
     publishAuthSessionEvent('signed_out', sid)
   }
+}
+
+/**
+ * Mark an explicit user sign-out so obsolete authenticated requests can end
+ * quietly instead of being mistaken for an expired session.
+ */
+export function beginAuthenticationSignOut(): () => void {
+  authenticationSignOuts += 1
+  authEpoch += 1
+  let active = true
+  return () => {
+    if (!active) return
+    active = false
+    authenticationSignOuts = Math.max(0, authenticationSignOuts - 1)
+  }
+}
+
+export function isAuthenticationSignOutInProgress(): boolean {
+  return authenticationSignOuts > 0
 }
 
 export function clearAuthenticatedClientState(

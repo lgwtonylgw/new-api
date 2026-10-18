@@ -52,7 +52,6 @@ import type {
 
 // User login with username and password
 export async function login(payload: LoginPayload): Promise<LoginResponse> {
-  const turnstile = payload.turnstile ?? ''
   try {
     let passwordFields:
       | { password: string }
@@ -67,7 +66,7 @@ export async function login(payload: LoginPayload): Promise<LoginResponse> {
       passwordFields = { password: payload.password }
     }
     const res = await api.post<LoginResponse>(
-      `/api/user/login?turnstile=${turnstile}`,
+      '/api/user/login',
       {
         username: payload.username,
         ...passwordFields,
@@ -107,6 +106,9 @@ export async function executeLogout(
   try {
     return await runtime.request(runtime.getExpectedSID())
   } catch (error: unknown) {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      return { success: true, message: '' }
+    }
     const code = axios.isAxiosError(error)
       ? error.response?.data?.code
       : undefined
@@ -137,6 +139,7 @@ export async function logout(): Promise<ApiResponse> {
         headers: sid ? { 'X-Auth-Session': sid } : undefined,
         skipAuthRefresh: true,
         skipErrorHandler: true,
+        allowDuringSignOut: true,
       })
       return res.data
     },
@@ -175,8 +178,7 @@ export async function createOAuthAuthorization(
   intent: 'login' | 'bind' | 'verify',
   operation?: VerificationOperation,
   signal?: AbortSignal,
-  proofToken?: string,
-  turnstile?: string
+  proofToken?: string
 ): Promise<{ state: string; authorizationUrl?: string }> {
   const aff = intent === 'login' ? getAffiliateCode() : ''
   const res = await api.post(
@@ -190,7 +192,6 @@ export async function createOAuthAuthorization(
     },
     {
       skipAuthRefresh: intent === 'login',
-      ...(turnstile ? { params: { turnstile } } : {}),
       ...(proofToken ? { headers: { 'X-Security-Proof': proofToken } } : {}),
       singleUseAuthorization: intent === 'bind',
       signal,
@@ -226,12 +227,9 @@ export async function createOAuthFlow(
 }
 
 // WeChat login by authorization code
-export async function wechatLoginByCode(
-  code: string,
-  turnstile?: string
-): Promise<ApiResponse> {
+export async function wechatLoginByCode(code: string): Promise<ApiResponse> {
   const res = await api.get('/api/oauth/wechat', {
-    params: { code, turnstile },
+    params: { code },
   })
   return res.data
 }
@@ -255,9 +253,7 @@ export async function telegramLogin(
 
 // User registration
 export async function register(payload: RegisterPayload): Promise<ApiResponse> {
-  const res = await api.post(`/api/user/register`, payload, {
-    params: { turnstile: payload.turnstile ?? '' },
-  })
+  const res = await api.post(`/api/user/register`, payload)
   return res.data
 }
 

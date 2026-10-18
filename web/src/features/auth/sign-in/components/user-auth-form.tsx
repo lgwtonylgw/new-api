@@ -27,7 +27,6 @@ import type { z } from 'zod'
 
 import { Dialog } from '@/components/dialog'
 import { PasswordInput } from '@/components/password-input'
-import { Turnstile } from '@/components/turnstile'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -44,7 +43,6 @@ import { LegalConsent } from '@/features/auth/components/legal-consent'
 import { OAuthProviders } from '@/features/auth/components/oauth-providers'
 import { loginFormSchema } from '@/features/auth/constants'
 import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
-import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
 import { beginPasskeyLogin, finishPasskeyLogin } from '@/features/auth/passkey'
 import {
   requestPasskeyAssertion,
@@ -80,7 +78,6 @@ export function UserAuthForm({
   useEffect(() => () => passkeyOperation.current?.abort(), [])
   const [isWeChatDialogOpen, setIsWeChatDialogOpen] = useState(false)
   const [isWeChatSubmitting, setIsWeChatSubmitting] = useState(false)
-  const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0)
   const legalConsentErrorMessage = t(
     'Please read and agree to the User Agreement and Privacy Policy first'
   )
@@ -98,18 +95,7 @@ export function UserAuthForm({
     (status?.password_login_encryption_enabled ??
       status?.data?.password_login_encryption_enabled ??
       false) === true
-  const {
-    isTurnstileEnabled,
-    turnstileSiteKey,
-    turnstileToken,
-    setTurnstileToken,
-    validateTurnstile,
-  } = useTurnstile()
   const { handleLoginResult } = useAuthRedirect()
-  const resetTurnstile = () => {
-    setTurnstileToken('')
-    setTurnstileWidgetKey((current) => current + 1)
-  }
 
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
   const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
@@ -161,20 +147,11 @@ export function UserAuthForm({
       return
     }
 
-    if (!validateTurnstile()) return
-
-    const submittedTurnstileToken = turnstileToken
-    if (isTurnstileEnabled) {
-      setTurnstileToken('')
-      setTurnstileWidgetKey((current) => current + 1)
-    }
-
     setIsLoading(true)
     try {
       const res = await login({
         username: data.username,
         password: data.password,
-        turnstile: submittedTurnstileToken,
         passwordEncryptionEnabled: passwordLoginEncryptionEnabled,
       })
 
@@ -207,7 +184,7 @@ export function UserAuthForm({
       toast.error(legalConsentErrorMessage)
       return false
     }
-    return validateTurnstile()
+    return true
   }
 
   const handleWeChatDialogChange = (open: boolean) => {
@@ -223,7 +200,6 @@ export function UserAuthForm({
       toast.error(legalConsentErrorMessage)
       return
     }
-    if (!validateTurnstile()) return
     if (!wechatCode.trim()) {
       toast.error(t('Please enter the verification code'))
       return
@@ -231,7 +207,7 @@ export function UserAuthForm({
 
     setIsWeChatSubmitting(true)
     try {
-      const res = await wechatLoginByCode(wechatCode, turnstileToken)
+      const res = await wechatLoginByCode(wechatCode)
       if (res?.success) {
         handleWeChatDialogChange(false)
         if (await handleLoginResult(res.data, redirectTo)) {
@@ -246,7 +222,6 @@ export function UserAuthForm({
       )
     } finally {
       setIsWeChatSubmitting(false)
-      resetTurnstile()
     }
   }
 
@@ -347,7 +322,6 @@ export function UserAuthForm({
         redirectTo={redirectTo}
         disabled={isLoading}
         onBeforeLogin={validateAlternativeLogin}
-        turnstile={{ token: turnstileToken, onConsume: resetTurnstile }}
         onWeChatLogin={hasWeChatLogin ? handleOpenWeChatDialog : undefined}
         isWeChatLoading={isWeChatSubmitting}
       />
@@ -453,17 +427,6 @@ export function UserAuthForm({
           >
             {t('Other login options')}
           </Button>
-        )}
-
-        {isTurnstileEnabled && (
-          <div className='flex justify-center pt-3'>
-            <Turnstile
-              key={turnstileWidgetKey}
-              siteKey={turnstileSiteKey}
-              onVerify={setTurnstileToken}
-              onExpire={() => setTurnstileToken('')}
-            />
-          </div>
         )}
 
         {!hasAlternativeLogin && alternativeLoginMethods}

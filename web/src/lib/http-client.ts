@@ -23,6 +23,7 @@ import {
   applyAuthRotation,
   clearAuthentication,
   getFreshAuthHeaders,
+  isAuthenticationSignOutInProgress,
   refreshAuthentication,
 } from '@/lib/auth-session'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -39,6 +40,8 @@ declare module 'axios' {
     disableDuplicate?: boolean
     skipAuthRefresh?: boolean
     authRetry?: boolean
+    authSessionSID?: string
+    allowDuringSignOut?: boolean
     acceptAuthRotation?: boolean
     singleUseAuthorization?: boolean
   }
@@ -97,6 +100,18 @@ api.interceptors.response.use(
     const status = error?.response?.status
 
     if (status === 401) {
+      const currentSID = useAuthStore.getState().auth.session?.sid
+      const belongsToPreviousSession = Boolean(
+        config?.authSessionSID && config.authSessionSID !== currentSID
+      )
+      if (
+        belongsToPreviousSession ||
+        (isAuthenticationSignOutInProgress() && !config?.allowDuringSignOut)
+      ) {
+        throw new axios.CanceledError(
+          'Authenticated request was superseded by sign out'
+        )
+      }
       if (config && !config.skipAuthRefresh && !config.authRetry) {
         config.authRetry = true
         const outcome = await refreshAuthentication()
@@ -145,6 +160,8 @@ api.interceptors.response.use(
 )
 
 api.interceptors.request.use(async (config) => {
+  const auth = useAuthStore.getState().auth
+  if (auth.session?.sid) config.authSessionSID = auth.session.sid
   if (config.singleUseAuthorization || config.headers.has('X-Security-Proof')) {
     // Refresh before spending a proof/flow, never by replaying its request.
     config.skipAuthRefresh = true
@@ -158,7 +175,7 @@ api.interceptors.request.use(async (config) => {
     }
     return config
   }
-  const accessToken = useAuthStore.getState().auth.accessToken
+  const accessToken = auth.accessToken
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`
   }

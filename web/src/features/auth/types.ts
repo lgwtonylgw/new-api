@@ -27,7 +27,6 @@ import type { LoginResult } from './secure-verification/types'
 export interface LoginPayload {
   username: string
   password: string
-  turnstile?: string
   passwordEncryptionEnabled?: boolean
 }
 
@@ -42,7 +41,6 @@ export interface RegisterPayload {
   email?: string
   verification_code?: string
   aff_code?: string
-  turnstile?: string
 }
 
 export interface PasswordResetPayload {

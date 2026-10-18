@@ -105,12 +105,9 @@ it.each(['login', 'register'])(
     expect(
       screen.getByRole('button', { name: 'Continue with GitHub' })
     ).toBeEnabled()
-    await user.click(
-      screen.getByRole('button', { name: 'Complete human verification' })
-    )
     expect(
-      screen.getByRole('button', { name: 'Continue with GitHub' })
-    ).toBeEnabled()
+      screen.queryByRole('button', { name: 'Complete human verification' })
+    ).not.toBeInTheDocument()
     await user.click(
       screen.getByRole('button', {
         name:
@@ -134,6 +131,13 @@ it.each(['login', 'register'])(
       expect(screen.getByLabelText('Confirm password')).toBeVisible()
       expect(screen.getByPlaceholderText('Verification code')).toBeVisible()
       expect(screen.getByRole('button', { name: 'Send code' })).toBeEnabled()
+      expect(
+        screen.getByRole('button', { name: 'Complete human verification' })
+      ).toBeVisible()
+    } else {
+      expect(
+        screen.queryByRole('button', { name: 'Complete human verification' })
+      ).not.toBeInTheDocument()
     }
     await user.click(
       screen.getByRole('button', {
@@ -142,9 +146,6 @@ it.each(['login', 'register'])(
             ? 'Other login options'
             : 'Other registration options',
       })
-    )
-    await user.click(
-      screen.getByRole('button', { name: 'Expire human verification' })
     )
     expect(
       screen.getByRole('button', { name: 'Continue with GitHub' })
@@ -163,12 +164,6 @@ it('keeps OAuth buttons clickable while prerequisites are pending', async () => 
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
   await user.click(screen.getByRole('checkbox'))
-  await user.click(weChatButton)
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-
-  await user.click(
-    screen.getByRole('button', { name: 'Complete human verification' })
-  )
   await user.click(weChatButton)
   expect(screen.getByRole('dialog')).toBeVisible()
   expect(screen.getByRole('button', { name: 'Confirm' })).toBeEnabled()

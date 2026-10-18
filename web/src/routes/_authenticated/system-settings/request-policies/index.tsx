@@ -18,13 +18,15 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
+import { POLICY_DEFAULT_SECTION } from '@/features/system-settings/route-sections'
+
 export const Route = createFileRoute(
   '/_authenticated/system-settings/request-policies/'
 )({
   beforeLoad: () => {
     throw redirect({
       to: '/system-settings/request-policies/$section',
-      params: { section: 'routing' },
+      params: { section: POLICY_DEFAULT_SECTION },
       replace: true,
     })
   },

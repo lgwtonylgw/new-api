@@ -30,6 +30,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 import { saveModelPricing } from '@/features/model-pricing/api'
 import { useUpdateOption } from '@/features/system-settings/hooks/use-update-option'
+import { beginAuthenticationSignOut } from '@/lib/auth-session'
 import { handleServerError } from '@/lib/handle-server-error'
 import { api } from '@/lib/http-client'
 import { createAppQueryClient } from '@/lib/query-client'
@@ -367,6 +368,46 @@ it.each([200, 401])(
     client.clear()
   }
 )
+
+it('keeps concurrent 401 responses silent during an explicit sign-out', async () => {
+  useAuthStore.getState().auth.setBundle({
+    access_token: 'access',
+    token_type: 'Bearer',
+    access_expires_at: 2_000_000_000,
+    user: { id: 1, username: 'test-user', role: 1 },
+    session: {
+      sid: 'sign-out-session',
+      current: true,
+      login_method: 'password',
+      ip: '',
+      user_agent: '',
+      created_at: 1,
+      last_active_at: 1,
+      expires_at: 2_000_000_000,
+    },
+  })
+  const send = vi.spyOn(XMLHttpRequest.prototype, 'send')
+  const notify = vi.spyOn(toast, 'error').mockReturnValue('error')
+  api.defaults.adapter = async (config) => {
+    throw new AxiosError('Unauthorized', 'ERR_BAD_REQUEST', config, undefined, {
+      data: { message: 'Access token expired' },
+      status: 401,
+      statusText: 'Unauthorized',
+      headers: {},
+      config,
+    })
+  }
+
+  const finishSignOut = beginAuthenticationSignOut()
+  try {
+    await api.get('/models').catch(handleServerError)
+  } finally {
+    finishSignOut()
+  }
+
+  expect(send).not.toHaveBeenCalled()
+  expect(notify).not.toHaveBeenCalled()
+})
 
 it('never refreshes or replays a failed single-use authorization request', async () => {
   useAuthStore.getState().auth.setBundle({

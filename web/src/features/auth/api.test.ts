@@ -29,26 +29,18 @@ import { consumeOAuthLoginRedirect } from './lib/oauth-callback-mode'
 
 afterEach(() => vi.restoreAllMocks())
 
-test('sends the human verification token when starting third-party login', async () => {
-  const post = vi
-    .spyOn(api, 'post')
-    .mockResolvedValue({
-      data: { success: true, data: { flow_token: 'state' } },
-    })
-  await expect(
-    createOAuthAuthorization(
-      'oidc',
-      'login',
-      undefined,
-      undefined,
-      undefined,
-      'human-token'
-    )
-  ).resolves.toEqual({ state: 'state', authorizationUrl: undefined })
+test('starts third-party login without human verification', async () => {
+  const post = vi.spyOn(api, 'post').mockResolvedValue({
+    data: { success: true, data: { flow_token: 'state' } },
+  })
+  await expect(createOAuthAuthorization('oidc', 'login')).resolves.toEqual({
+    state: 'state',
+    authorizationUrl: undefined,
+  })
   expect(post).toHaveBeenCalledWith(
     '/api/oauth/state',
     expect.objectContaining({ provider: 'oidc', intent: 'login' }),
-    expect.objectContaining({ params: { turnstile: 'human-token' } })
+    expect.not.objectContaining({ params: expect.anything() })
   )
 })
 
@@ -137,6 +129,26 @@ function mismatchError() {
 }
 
 describe('logout coordination', () => {
+  test('treats an already expired server session as signed out', async () => {
+    let refreshCount = 0
+    const result = await executeLogout({
+      getExpectedSID: () => 'session-a',
+      request: async () => {
+        throw {
+          isAxiosError: true,
+          response: { status: 401, data: { code: 'AUTH_SESSION_REVOKED' } },
+        }
+      },
+      refresh: async () => {
+        refreshCount += 1
+        return { kind: 'anonymous' }
+      },
+    })
+
+    expect(result).toEqual({ success: true, message: '' })
+    expect(refreshCount).toBe(0)
+  })
+
   test('returns an unsuccessful response without pretending to sign out', async () => {
     let refreshCount = 0
     const result = await executeLogout({

@@ -59,11 +59,6 @@ func GenerateOAuthCode(c *gin.Context) {
 		common.ApiErrorT(c, "Invalid parameters")
 		return
 	}
-	if request.Intent == model.AuthFlowIntentLogin {
-		if !middleware.VerifyTurnstile(c) {
-			return
-		}
-	}
 	userID := 0
 	sessionID := ""
 	flowPayload := oauthFlowPayload{AffiliateCode: request.Aff}
@@ -402,14 +397,6 @@ func handleOAuthBind(c *gin.Context, providerName string, provider oauth.Provide
 // returns the rewrite to carry into the challenge.
 func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, token *oauth.OAuthToken, affiliateCode string) (*model.User, *service.LegacyGitHubMigration, error) {
 	user := &model.User{}
-	if provider.ProviderUserIDColumn() == "telegram_id" {
-		err := provider.FillUserByProviderID(user, oauthUser.ProviderUserID)
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil, oauth.ErrTelegramAccountNotBound
-		}
-		return user, nil, err
-	}
-
 	// Check if user already exists with new ID
 	if provider.IsUserIDTaken(oauthUser.ProviderUserID) {
 		err := provider.FillUserByProviderID(user, oauthUser.ProviderUserID)
@@ -558,6 +545,11 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 
 			// Set the provider user ID on the user model and update
 			provider.SetProviderUserID(user, oauthUser.ProviderUserID)
+			if provider.ProviderUserIDColumn() == "telegram_id" {
+				if err := model.ClaimExternalIdentityWithTx(tx, model.ExternalIdentityProviderTelegram, oauthUser.ProviderUserID, user.Id); err != nil {
+					return err
+				}
+			}
 			if err := tx.Model(user).Updates(map[string]any{
 				"github_id":   user.GitHubId,
 				"discord_id":  user.DiscordId,

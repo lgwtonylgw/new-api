@@ -861,9 +861,14 @@ export function OAuthSection(props: OAuthSectionProps) {
                 <OAuthSetupGuide
                   title={t('Setup guide')}
                   description={t(
-                    'In BotFather, open Login Widget, register this callback URL, and copy the Client ID and Client Secret. Existing Telegram bindings will continue to work after configuration.'
+                    'In the BotFather mini app, open Login Widget, enable OpenID Connect Login, and register both URLs below. Use the Client ID and Client Secret shown there, not the bot token.'
                   )}
                   rows={[
+                    {
+                      label: t('Site URL'),
+                      value: siteUrl,
+                      copyLabel: t('Copy homepage URL'),
+                    },
                     {
                       label: t('Authorization callback URL'),
                       value: telegramCallbackUrl,

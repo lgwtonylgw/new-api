@@ -167,8 +167,6 @@ export function SignUpForm({
       }
     }
 
-    if (!validateTurnstile()) return
-
     setIsLoading(true)
     try {
       const res = await register({
@@ -177,7 +175,6 @@ export function SignUpForm({
         email: data.email || undefined,
         verification_code: verificationCode || undefined,
         aff_code: getAffiliateCode(),
-        turnstile: turnstileToken,
       })
 
       if (res?.success) {
@@ -192,7 +189,6 @@ export function SignUpForm({
       )
     } finally {
       setIsLoading(false)
-      resetTurnstile()
     }
   }
 
@@ -222,7 +218,7 @@ export function SignUpForm({
       toast.error(legalConsentErrorMessage)
       return false
     }
-    return validateTurnstile()
+    return true
   }
 
   const handleWeChatDialogChange = (open: boolean) => {
@@ -238,7 +234,6 @@ export function SignUpForm({
       toast.error(legalConsentErrorMessage)
       return
     }
-    if (!validateTurnstile()) return
     if (!wechatCode.trim()) {
       toast.error(t('Please enter the verification code'))
       return
@@ -246,7 +241,7 @@ export function SignUpForm({
 
     setIsWeChatSubmitting(true)
     try {
-      const res = await wechatLoginByCode(wechatCode, turnstileToken)
+      const res = await wechatLoginByCode(wechatCode)
       if (res?.success) {
         handleWeChatDialogChange(false)
         if (await handleLoginResult(res.data)) {
@@ -261,7 +256,6 @@ export function SignUpForm({
       )
     } finally {
       setIsWeChatSubmitting(false)
-      resetTurnstile()
     }
   }
 
@@ -286,7 +280,6 @@ export function SignUpForm({
             status={status}
             disabled={isLoading}
             onBeforeLogin={validateAlternativeLogin}
-            turnstile={{ token: turnstileToken, onConsume: resetTurnstile }}
             onWeChatLogin={hasWeChatLogin ? handleOpenWeChatDialog : undefined}
             isWeChatLoading={isWeChatSubmitting}
           />
@@ -415,16 +408,19 @@ export function SignUpForm({
         )}
 
         {/* Turnstile */}
-        {isTurnstileEnabled && (
-          <div className='mt-2'>
-            <Turnstile
-              key={turnstileWidgetKey}
-              siteKey={turnstileSiteKey}
-              onVerify={setTurnstileToken}
-              onExpire={() => setTurnstileToken('')}
-            />
-          </div>
-        )}
+        {emailVerificationRequired &&
+          passwordRegisterEnabled &&
+          (showPasswordForm || !hasOAuthLogin) &&
+          isTurnstileEnabled && (
+            <div className='mt-2'>
+              <Turnstile
+                key={turnstileWidgetKey}
+                siteKey={turnstileSiteKey}
+                onVerify={setTurnstileToken}
+                onExpire={() => setTurnstileToken('')}
+              />
+            </div>
+          )}
 
         <LegalConsent
           status={status}

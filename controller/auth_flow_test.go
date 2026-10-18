@@ -135,23 +135,22 @@ func TestAuthTurnstileRejectsFailedResponsesAndReplay(t *testing.T) {
 	}
 }
 
-func TestOAuthLoginRequiresTurnstileBeforeCreatingFlow(t *testing.T) {
+func TestOAuthLoginDoesNotWaitForTurnstile(t *testing.T) {
+	setupAuthFlowControllerTest(t)
 	original := common.TurnstileCheckEnabled
 	common.TurnstileCheckEnabled = true
 	t.Cleanup(func() { common.TurnstileCheckEnabled = original })
-	for _, provider := range []string{"github", "oidc", "telegram"} {
-		t.Run(provider, func(t *testing.T) {
-			body, err := common.Marshal(map[string]string{"provider": provider, "intent": "login"})
-			require.NoError(t, err)
-			response := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(response)
-			c.Request = httptest.NewRequest(http.MethodPost, "/api/oauth/state", strings.NewReader(string(body)))
-			GenerateOAuthCode(c)
-			assert.True(t, c.IsAborted())
-			assert.Contains(t, response.Body.String(), "Turnstile token is empty")
-			assert.NotContains(t, response.Body.String(), "flow_token")
-		})
-	}
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/oauth/state", strings.NewReader(`{"provider":"auth-flow-test","intent":"login"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	GenerateOAuthCode(c)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	assert.Contains(t, response.Body.String(), "flow_token")
+	assert.NotContains(t, response.Body.String(), "Turnstile token is empty")
 }
 
 func TestOAuthEnableRejectsIncompleteCredentials(t *testing.T) {
