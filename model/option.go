@@ -215,6 +215,9 @@ func loadOptionsFromDatabase() {
 	options, _ := AllOption()
 	passkeyOptions := make(map[string]string)
 	for _, option := range options {
+		if option.Key == requiredEmailVerificationMigrationKey {
+			continue
+		}
 		if IsPasskeyDomainOption(option.Key) {
 			passkeyOptions[option.Key] = option.Value
 			continue

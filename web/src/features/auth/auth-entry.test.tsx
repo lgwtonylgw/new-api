@@ -95,13 +95,23 @@ it.each(['login', 'register'])(
         screen.getByRole('button', { name: `Continue with ${provider}` })
       ).toBeEnabled()
     }
-    expect(
-      screen.getByRole('link', { name: 'User Agreement' })
-    ).toHaveAttribute('href', '/user-agreement')
-    expect(
-      screen.getByRole('link', { name: 'Privacy Policy' })
-    ).toHaveAttribute('href', '/privacy-policy')
-    await user.click(screen.getByRole('checkbox'))
+    if (mode === 'register') {
+      expect(
+        screen.getByRole('link', { name: 'User Agreement' })
+      ).toHaveAttribute('href', '/user-agreement')
+      expect(
+        screen.getByRole('link', { name: 'Privacy Policy' })
+      ).toHaveAttribute('href', '/privacy-policy')
+      await user.click(screen.getByRole('checkbox'))
+    } else {
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('link', { name: 'User Agreement' })
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('link', { name: 'Privacy Policy' })
+      ).not.toBeInTheDocument()
+    }
     expect(
       screen.getByRole('button', { name: 'Continue with GitHub' })
     ).toBeEnabled()
@@ -153,17 +163,13 @@ it.each(['login', 'register'])(
   }
 )
 
-it('keeps OAuth buttons clickable while prerequisites are pending', async () => {
+it('opens alternative login without requiring legal consent', async () => {
   const user = userEvent.setup()
   render(<UserAuthForm />)
   const weChatButton = screen.getByRole('button', {
     name: 'Continue with WeChat',
   })
 
-  await user.click(weChatButton)
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-
-  await user.click(screen.getByRole('checkbox'))
   await user.click(weChatButton)
   expect(screen.getByRole('dialog')).toBeVisible()
   expect(screen.getByRole('button', { name: 'Confirm' })).toBeEnabled()

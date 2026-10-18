@@ -380,6 +380,9 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	if err := migrateRequiredEmailVerification(DB); err != nil {
+		return fmt.Errorf("enable required email verification: %w", err)
+	}
 	if err := InitializeUserAuthVersions(); err != nil {
 		return err
 	}
