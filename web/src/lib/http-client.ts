@@ -60,6 +60,18 @@ export const api = axios.create({
 
 const inFlightGet = new Map<string, Promise<unknown>>()
 const originalGet = api.get.bind(api)
+let authenticatedRequestController = new AbortController()
+
+/**
+ * Stop requests that still belong to the account being signed out. A fresh
+ * controller is installed immediately so a later sign-in starts cleanly.
+ */
+export function cancelAuthenticatedRequests(): void {
+  authenticatedRequestController.abort(
+    new axios.CanceledError('Authenticated request was canceled by sign out')
+  )
+  authenticatedRequestController = new AbortController()
+}
 
 api.get = ((url: string, config: ApiRequestConfig = {}) => {
   if (config.disableDuplicate) return originalGet(url, config)
@@ -160,8 +172,19 @@ api.interceptors.response.use(
 )
 
 api.interceptors.request.use(async (config) => {
+  if (isAuthenticationSignOutInProgress() && !config.allowDuringSignOut) {
+    throw new axios.CanceledError(
+      'Authenticated request was canceled by sign out'
+    )
+  }
+
   const auth = useAuthStore.getState().auth
-  if (auth.session?.sid) config.authSessionSID = auth.session.sid
+  if (auth.session?.sid) {
+    config.authSessionSID = auth.session.sid
+    if (!config.allowDuringSignOut) {
+      config.signal ??= authenticatedRequestController.signal
+    }
+  }
   if (config.singleUseAuthorization || config.headers.has('X-Security-Proof')) {
     // Refresh before spending a proof/flow, never by replaying its request.
     config.skipAuthRefresh = true

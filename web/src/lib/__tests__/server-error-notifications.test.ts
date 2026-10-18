@@ -32,7 +32,7 @@ import { saveModelPricing } from '@/features/model-pricing/api'
 import { useUpdateOption } from '@/features/system-settings/hooks/use-update-option'
 import { beginAuthenticationSignOut } from '@/lib/auth-session'
 import { handleServerError } from '@/lib/handle-server-error'
-import { api } from '@/lib/http-client'
+import { api, cancelAuthenticatedRequests } from '@/lib/http-client'
 import { createAppQueryClient } from '@/lib/query-client'
 import { AuthOperationError } from '@/lib/secure-verification'
 import {
@@ -388,7 +388,7 @@ it('keeps concurrent 401 responses silent during an explicit sign-out', async ()
   })
   const send = vi.spyOn(XMLHttpRequest.prototype, 'send')
   const notify = vi.spyOn(toast, 'error').mockReturnValue('error')
-  api.defaults.adapter = async (config) => {
+  const adapter = vi.fn<AxiosAdapter>(async (config) => {
     throw new AxiosError('Unauthorized', 'ERR_BAD_REQUEST', config, undefined, {
       data: { message: 'Access token expired' },
       status: 401,
@@ -396,7 +396,8 @@ it('keeps concurrent 401 responses silent during an explicit sign-out', async ()
       headers: {},
       config,
     })
-  }
+  })
+  api.defaults.adapter = adapter
 
   const finishSignOut = beginAuthenticationSignOut()
   try {
@@ -406,6 +407,51 @@ it('keeps concurrent 401 responses silent during an explicit sign-out', async ()
   }
 
   expect(send).not.toHaveBeenCalled()
+  expect(adapter).not.toHaveBeenCalled()
+  expect(notify).not.toHaveBeenCalled()
+})
+
+it('cancels an authenticated request that was already in flight at sign-out', async () => {
+  useAuthStore.getState().auth.setBundle({
+    access_token: 'access',
+    token_type: 'Bearer',
+    access_expires_at: 2_000_000_000,
+    user: { id: 1, username: 'test-user', role: 1 },
+    session: {
+      sid: 'sign-out-session',
+      current: true,
+      login_method: 'password',
+      ip: '',
+      user_agent: '',
+      created_at: 1,
+      last_active_at: 1,
+      expires_at: 2_000_000_000,
+    },
+  })
+  let requestStarted: (() => void) | undefined
+  const started = new Promise<void>((resolve) => {
+    requestStarted = resolve
+  })
+  const adapter = vi.fn<AxiosAdapter>(
+    (config) =>
+      new Promise((_resolve, reject) => {
+        requestStarted?.()
+        config.signal?.addEventListener(
+          'abort',
+          () => reject(new CanceledError('Request canceled', config)),
+          { once: true }
+        )
+      })
+  )
+  api.defaults.adapter = adapter
+  const notify = vi.spyOn(toast, 'error').mockReturnValue('error')
+
+  const request = api.get('/models').catch(handleServerError)
+  await started
+  cancelAuthenticatedRequests()
+  await request
+
+  expect(adapter).toHaveBeenCalledTimes(1)
   expect(notify).not.toHaveBeenCalled()
 })
 
