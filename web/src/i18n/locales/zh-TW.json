@@ -6,6 +6,8 @@
     "Other login options": "其他登入方式",
     "Other registration options": "其他註冊方式",
     "Human verification could not load. Please try again.": "人機驗證載入失敗，請重試。",
+    "Complete human verification before requesting an email code.": "傳送電子郵件驗證碼前，請先完成人機驗證。",
+    "Please complete the human verification before sending a code.": "請先完成人機驗證，再傳送驗證碼。",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

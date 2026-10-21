@@ -101,6 +101,7 @@ func GetOptions(c *gin.Context) {
 	var options []*model.Option
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
+	smtpTokenConfigured := strings.TrimSpace(common.SMTPToken) != ""
 	for k, v := range common.OptionMap {
 		if k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" {
 			continue
@@ -123,6 +124,10 @@ func GetOptions(c *gin.Context) {
 		}
 	}
 	common.OptionMapRWMutex.Unlock()
+	options = append(options, &model.Option{
+		Key:   "SMTPTokenConfigured",
+		Value: strconv.FormatBool(smtpTokenConfigured),
+	})
 	// Display the same effective expressions used by pricing and settlement,
 	// including built-in defaults absent from persisted administrator options.
 	for key, values := range map[string]map[string]string{

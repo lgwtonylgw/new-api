@@ -6,6 +6,8 @@
     "Other login options": "Other login options",
     "Other registration options": "Other registration options",
     "Human verification could not load. Please try again.": "Human verification could not load. Please try again.",
+    "Complete human verification before requesting an email code.": "Complete human verification before requesting an email code.",
+    "Please complete the human verification before sending a code.": "Please complete the human verification before sending a code.",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

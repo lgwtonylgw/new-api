@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import * as z from 'zod'
 
@@ -70,6 +70,7 @@ type EmailFormValues = z.infer<ReturnType<typeof createEmailSchema>>
 
 type EmailSettingsSectionProps = {
   defaultValues: EmailFormValues
+  credentialConfigured: boolean
 }
 
 type SmtpSecurityMode = 'none' | 'ssl_tls' | 'starttls'
@@ -85,6 +86,7 @@ function getSmtpSecurityMode(values: {
 
 export function EmailSettingsSection({
   defaultValues,
+  credentialConfigured,
 }: EmailSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
@@ -93,6 +95,14 @@ export function EmailSettingsSection({
   const form = useForm<EmailFormValues>({
     resolver: zodResolver(emailSchema),
     defaultValues,
+  })
+  const smtpSslEnabled = useWatch({
+    control: form.control,
+    name: 'SMTPSSLEnabled',
+  })
+  const smtpStartTlsEnabled = useWatch({
+    control: form.control,
+    name: 'SMTPStartTLSEnabled',
   })
 
   useResetForm(form, defaultValues)
@@ -238,8 +248,8 @@ export function EmailSettingsSection({
               <FormControl>
                 <RadioGroup
                   value={getSmtpSecurityMode({
-                    SMTPSSLEnabled: form.watch('SMTPSSLEnabled'),
-                    SMTPStartTLSEnabled: form.watch('SMTPStartTLSEnabled'),
+                    SMTPSSLEnabled: smtpSslEnabled,
+                    SMTPStartTLSEnabled: smtpStartTlsEnabled,
                   })}
                   onValueChange={(value) => {
                     const mode = value as SmtpSecurityMode
@@ -370,7 +380,7 @@ export function EmailSettingsSection({
                 <FormControl>
                   <Input
                     autoComplete='off'
-                    placeholder={t('New API &lt;noreply@example.com&gt;')}
+                    placeholder={t('noreply@example.com')}
                     {...field}
                     onChange={(event) => field.onChange(event.target.value)}
                   />
@@ -393,12 +403,17 @@ export function EmailSettingsSection({
                   <Input
                     autoComplete='off'
                     type='password'
-                    placeholder={t('Enter new token to update')}
+                    placeholder={
+                      credentialConfigured
+                        ? t('Configured')
+                        : t('Enter new token to update')
+                    }
                     {...field}
                     onChange={(event) => field.onChange(event.target.value)}
                   />
                 </FormControl>
                 <FormDescription>
+                  {credentialConfigured && `${t('Configured')}. `}
                   {t('Leave blank to keep the existing credential')}
                 </FormDescription>
                 <FormMessage />

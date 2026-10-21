@@ -75,6 +75,7 @@ const OPERATIONS_SECTIONS = [
           SMTPInsecureSkipVerify: settings.SMTPInsecureSkipVerify,
           SMTPForceAuthLogin: settings.SMTPForceAuthLogin,
         }}
+        credentialConfigured={settings.SMTPTokenConfigured}
       />
     ),
   },

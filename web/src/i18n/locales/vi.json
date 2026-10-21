@@ -6,6 +6,8 @@
     "Other login options": "Cách đăng nhập khác",
     "Other registration options": "Cách đăng ký khác",
     "Human verification could not load. Please try again.": "Không thể tải xác minh. Vui lòng thử lại.",
+    "Complete human verification before requesting an email code.": "Hãy hoàn tất xác minh con người trước khi yêu cầu mã qua email.",
+    "Please complete the human verification before sending a code.": "Hãy hoàn tất xác minh con người trước rồi gửi mã.",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

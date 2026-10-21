@@ -1,0 +1,87 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { render, screen } from '@testing-library/react'
+import { createInstance } from 'i18next'
+import type { ComponentProps } from 'react'
+import { I18nextProvider } from 'react-i18next'
+import { describe, expect, it } from 'vitest'
+
+import { SettingsPageProvider } from '../../components/settings-page-context'
+import { EmailSettingsSection } from '../email-settings-section'
+
+const persistedValues: ComponentProps<
+  typeof EmailSettingsSection
+>['defaultValues'] = {
+  SMTPServer: 'smtp.resend.com',
+  SMTPPort: '465',
+  SMTPAccount: 'resend',
+  SMTPFrom: 'noreply@example.com',
+  SMTPToken: '',
+  SMTPSSLEnabled: true,
+  SMTPStartTLSEnabled: false,
+  SMTPInsecureSkipVerify: false,
+  SMTPForceAuthLogin: false,
+}
+
+async function renderSettings() {
+  const i18n = createInstance()
+  await i18n.init({
+    lng: 'en',
+    resources: { en: { translation: {} } },
+    interpolation: { escapeValue: false },
+  })
+  const queryClient = new QueryClient({
+    defaultOptions: { mutations: { retry: false } },
+  })
+
+  render(
+    <I18nextProvider i18n={i18n}>
+      <QueryClientProvider client={queryClient}>
+        <SettingsPageProvider actionsContainer={null}>
+          <EmailSettingsSection
+            defaultValues={persistedValues}
+            credentialConfigured
+          />
+        </SettingsPageProvider>
+      </QueryClientProvider>
+    </I18nextProvider>
+  )
+}
+
+describe('SMTP settings display', () => {
+  it('shows persisted non-secret fields and the stored credential state', async () => {
+    await renderSettings()
+
+    expect(screen.getByRole('textbox', { name: 'SMTP Host' })).toHaveValue(
+      'smtp.resend.com'
+    )
+    expect(screen.getByRole('spinbutton', { name: 'Port' })).toHaveValue(465)
+    expect(screen.getByRole('textbox', { name: 'Username' })).toHaveValue(
+      'resend'
+    )
+    expect(screen.getByRole('textbox', { name: 'From Address' })).toHaveValue(
+      'noreply@example.com'
+    )
+    expect(screen.getByLabelText('Password / Access Token')).toHaveAttribute(
+      'placeholder',
+      'Configured'
+    )
+  })
+})

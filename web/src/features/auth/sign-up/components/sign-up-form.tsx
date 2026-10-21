@@ -382,6 +382,23 @@ export function SignUpForm({
                   )}
                 />
 
+                {isTurnstileEnabled && (
+                  <div className='bg-muted/30 grid gap-2 rounded-lg border p-3'>
+                    <p className='text-muted-foreground text-xs'>
+                      {t(
+                        'Complete human verification before requesting an email code.'
+                      )}
+                    </p>
+                    <Turnstile
+                      key={turnstileWidgetKey}
+                      siteKey={turnstileSiteKey}
+                      onVerify={setTurnstileToken}
+                      onExpire={() => setTurnstileToken('')}
+                      className='mx-auto w-full max-w-[300px]'
+                    />
+                  </div>
+                )}
+
                 {/* Verification Code Field */}
                 <div className='flex items-end gap-2'>
                   <div className='flex-1'>
@@ -406,21 +423,6 @@ export function SignUpForm({
             )}
           </>
         )}
-
-        {/* Turnstile */}
-        {emailVerificationRequired &&
-          passwordRegisterEnabled &&
-          (showPasswordForm || !hasOAuthLogin) &&
-          isTurnstileEnabled && (
-            <div className='mt-2'>
-              <Turnstile
-                key={turnstileWidgetKey}
-                siteKey={turnstileSiteKey}
-                onVerify={setTurnstileToken}
-                onExpire={() => setTurnstileToken('')}
-              />
-            </div>
-          )}
 
         <LegalConsent
           status={status}

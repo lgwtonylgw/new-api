@@ -374,6 +374,7 @@ export type OperationsSettings = {
   SMTPAccount: string
   SMTPFrom: string
   SMTPToken: string
+  SMTPTokenConfigured: boolean
   SMTPSSLEnabled: boolean
   SMTPStartTLSEnabled: boolean
   SMTPInsecureSkipVerify: boolean

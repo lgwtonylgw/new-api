@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
 
@@ -25,8 +25,20 @@ import { SignUpForm } from './sign-up/components/sign-up-form'
 import type { SystemStatus } from './types'
 
 let status: SystemStatus
+const { sendEmailVerificationMock } = vi.hoisted(() => ({
+  sendEmailVerificationMock: vi.fn(),
+}))
 
 vi.mock('@/hooks/use-status', () => ({ useStatus: () => ({ status }) }))
+vi.mock('@/features/auth/api', async () => {
+  const actual = await vi.importActual<typeof import('@/features/auth/api')>(
+    '@/features/auth/api'
+  )
+  return {
+    ...actual,
+    sendEmailVerification: sendEmailVerificationMock,
+  }
+})
 vi.mock('@tanstack/react-router', () => ({
   Link: (props: {
     to: string
@@ -62,6 +74,7 @@ vi.mock('@/components/turnstile', () => ({
 }))
 
 beforeEach(() => {
+  sendEmailVerificationMock.mockResolvedValue({ success: true })
   status = {
     github_oauth: true,
     github_client_id: 'github-client',
@@ -78,6 +91,41 @@ beforeEach(() => {
     turnstile_site_key: 'site-key',
     email_verification: true,
   }
+})
+
+it('requires a fresh human verification token before sending an email code', async () => {
+  const user = userEvent.setup()
+  render(<SignUpForm />)
+
+  await user.click(screen.getByRole('checkbox'))
+  await user.click(
+    screen.getByRole('button', { name: 'Sign up with username' })
+  )
+  await user.type(
+    screen.getByLabelText('Email (required for verification)'),
+    'user@example.com'
+  )
+
+  expect(
+    screen.getByText(
+      'Complete human verification before requesting an email code.'
+    )
+  ).toBeVisible()
+
+  await user.click(screen.getByRole('button', { name: 'Send code' }))
+  expect(sendEmailVerificationMock).not.toHaveBeenCalled()
+
+  await user.click(
+    screen.getByRole('button', { name: 'Complete human verification' })
+  )
+  await user.click(screen.getByRole('button', { name: 'Send code' }))
+
+  await waitFor(() => {
+    expect(sendEmailVerificationMock).toHaveBeenCalledWith(
+      'user@example.com',
+      'verified-token'
+    )
+  })
 })
 
 it.each(['login', 'register'])(

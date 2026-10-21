@@ -6,6 +6,8 @@
     "Other login options": "Autres options de connexion",
     "Other registration options": "Autres options d’inscription",
     "Human verification could not load. Please try again.": "La vérification humaine n’a pas pu se charger. Réessayez.",
+    "Complete human verification before requesting an email code.": "Effectuez la vérification humaine avant de demander un code par e-mail.",
+    "Please complete the human verification before sending a code.": "Effectuez d’abord la vérification humaine, puis envoyez le code.",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

@@ -6,6 +6,8 @@
     "Other login options": "Другие способы входа",
     "Other registration options": "Другие способы регистрации",
     "Human verification could not load. Please try again.": "Не удалось загрузить проверку. Повторите попытку.",
+    "Complete human verification before requesting an email code.": "Пройдите проверку перед запросом кода по электронной почте.",
+    "Please complete the human verification before sending a code.": "Сначала пройдите проверку, затем отправьте код.",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

@@ -6,6 +6,8 @@
     "Other login options": "その他のログイン方法",
     "Other registration options": "その他の登録方法",
     "Human verification could not load. Please try again.": "認証を読み込めませんでした。再試行してください。",
+    "Complete human verification before requesting an email code.": "メール認証コードを要求する前に、人間による認証を完了してください。",
+    "Please complete the human verification before sending a code.": "先に人間による認証を完了してから、コードを送信してください。",
     "360": "360",
     "1000": "1000",
     "10000": "10000",
