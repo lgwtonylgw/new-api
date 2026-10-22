@@ -33,7 +33,7 @@ const persistedValues: ComponentProps<
   SMTPPort: '465',
   SMTPAccount: 'resend',
   SMTPFrom: 'noreply@example.com',
-  SMTPToken: '',
+  SMTPToken: 're_test_access_token',
   SMTPSSLEnabled: true,
   SMTPStartTLSEnabled: false,
   SMTPInsecureSkipVerify: false,
@@ -55,10 +55,7 @@ async function renderSettings() {
     <I18nextProvider i18n={i18n}>
       <QueryClientProvider client={queryClient}>
         <SettingsPageProvider actionsContainer={null}>
-          <EmailSettingsSection
-            defaultValues={persistedValues}
-            credentialConfigured
-          />
+          <EmailSettingsSection defaultValues={persistedValues} />
         </SettingsPageProvider>
       </QueryClientProvider>
     </I18nextProvider>
@@ -66,7 +63,7 @@ async function renderSettings() {
 }
 
 describe('SMTP settings display', () => {
-  it('shows persisted non-secret fields and the stored credential state', async () => {
+  it('shows persisted SMTP fields including the access token', async () => {
     await renderSettings()
 
     expect(screen.getByRole('textbox', { name: 'SMTP Host' })).toHaveValue(
@@ -79,9 +76,8 @@ describe('SMTP settings display', () => {
     expect(screen.getByRole('textbox', { name: 'From Address' })).toHaveValue(
       'noreply@example.com'
     )
-    expect(screen.getByLabelText('Password / Access Token')).toHaveAttribute(
-      'placeholder',
-      'Configured'
-    )
+    expect(
+      screen.getByRole('textbox', { name: 'Password / Access Token' })
+    ).toHaveValue('re_test_access_token')
   })
 })

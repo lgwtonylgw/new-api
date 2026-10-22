@@ -36,7 +36,6 @@ const defaultOperationsSettings: OperationsSettings = {
   SMTPAccount: '',
   SMTPFrom: '',
   SMTPToken: '',
-  SMTPTokenConfigured: false,
   SMTPSSLEnabled: false,
   SMTPStartTLSEnabled: false,
   SMTPInsecureSkipVerify: false,

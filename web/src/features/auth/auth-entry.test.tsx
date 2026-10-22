@@ -20,14 +20,18 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
 
+import { ForgotPasswordForm } from './forgot-password/components/forgot-password-form'
 import { UserAuthForm } from './sign-in/components/user-auth-form'
 import { SignUpForm } from './sign-up/components/sign-up-form'
 import type { SystemStatus } from './types'
 
 let status: SystemStatus
-const { sendEmailVerificationMock } = vi.hoisted(() => ({
-  sendEmailVerificationMock: vi.fn(),
-}))
+const { sendEmailVerificationMock, sendPasswordResetEmailMock } = vi.hoisted(
+  () => ({
+    sendEmailVerificationMock: vi.fn(),
+    sendPasswordResetEmailMock: vi.fn(),
+  })
+)
 
 vi.mock('@/hooks/use-status', () => ({ useStatus: () => ({ status }) }))
 vi.mock('@/features/auth/api', async () => {
@@ -37,6 +41,7 @@ vi.mock('@/features/auth/api', async () => {
   return {
     ...actual,
     sendEmailVerification: sendEmailVerificationMock,
+    sendPasswordResetEmail: sendPasswordResetEmailMock,
   }
 })
 vi.mock('@tanstack/react-router', () => ({
@@ -75,6 +80,7 @@ vi.mock('@/components/turnstile', () => ({
 
 beforeEach(() => {
   sendEmailVerificationMock.mockResolvedValue({ success: true })
+  sendPasswordResetEmailMock.mockResolvedValue({ success: true })
   status = {
     github_oauth: true,
     github_client_id: 'github-client',
@@ -93,7 +99,7 @@ beforeEach(() => {
   }
 })
 
-it('requires a fresh human verification token before sending an email code', async () => {
+it('sends an email code without waiting for human verification', async () => {
   const user = userEvent.setup()
   render(<SignUpForm />)
 
@@ -107,24 +113,27 @@ it('requires a fresh human verification token before sending an email code', asy
   )
 
   expect(
-    screen.getByText(
-      'Complete human verification before requesting an email code.'
-    )
-  ).toBeVisible()
-
-  await user.click(screen.getByRole('button', { name: 'Send code' }))
-  expect(sendEmailVerificationMock).not.toHaveBeenCalled()
-
-  await user.click(
-    screen.getByRole('button', { name: 'Complete human verification' })
-  )
+    screen.queryByRole('button', { name: 'Complete human verification' })
+  ).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Send code' }))
 
   await waitFor(() => {
-    expect(sendEmailVerificationMock).toHaveBeenCalledWith(
-      'user@example.com',
-      'verified-token'
-    )
+    expect(sendEmailVerificationMock).toHaveBeenCalledWith('user@example.com')
+  })
+})
+
+it('sends a password reset email without waiting for human verification', async () => {
+  const user = userEvent.setup()
+  render(<ForgotPasswordForm />)
+
+  await user.type(screen.getByLabelText('Email'), 'user@example.com')
+  expect(
+    screen.queryByRole('button', { name: 'Complete human verification' })
+  ).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Send reset email' }))
+
+  await waitFor(() => {
+    expect(sendPasswordResetEmailMock).toHaveBeenCalledWith('user@example.com')
   })
 })
 
@@ -190,8 +199,8 @@ it.each(['login', 'register'])(
       expect(screen.getByPlaceholderText('Verification code')).toBeVisible()
       expect(screen.getByRole('button', { name: 'Send code' })).toBeEnabled()
       expect(
-        screen.getByRole('button', { name: 'Complete human verification' })
-      ).toBeVisible()
+        screen.queryByRole('button', { name: 'Complete human verification' })
+      ).not.toBeInTheDocument()
     } else {
       expect(
         screen.queryByRole('button', { name: 'Complete human verification' })

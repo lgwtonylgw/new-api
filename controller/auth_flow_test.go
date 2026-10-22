@@ -42,7 +42,7 @@ func (transport authTurnstileTransport) RoundTrip(request *http.Request) (*http.
 	return transport(request)
 }
 
-func TestGetOptionsReturnsOAuthCredentialsToRootSettings(t *testing.T) {
+func TestGetOptionsReturnsAdminCredentialsToRootSettings(t *testing.T) {
 	common.OptionMapRWMutex.Lock()
 	original := common.OptionMap
 	common.OptionMap = map[string]string{
@@ -55,13 +55,13 @@ func TestGetOptionsReturnsOAuthCredentialsToRootSettings(t *testing.T) {
 		"WeChatCallbackToken":    "wechat-token",
 		"WeChatEncodingAESKey":   "wechat-aes-key",
 		"WeChatServerToken":      "wechat-server-token",
-		"SMTPToken":              "smtp-token-must-remain-hidden",
+		"SMTPToken":              "smtp-access-token",
 		"SMTPServer":             "smtp.resend.com",
 		"SMTPAccount":            "resend",
 		"SMTPFrom":               "noreply@example.com",
 	}
 	originalSMTPToken := common.SMTPToken
-	common.SMTPToken = "smtp-token-must-remain-hidden"
+	common.SMTPToken = "smtp-access-token"
 	common.OptionMapRWMutex.Unlock()
 	t.Cleanup(func() {
 		common.OptionMapRWMutex.Lock()
@@ -84,14 +84,13 @@ func TestGetOptionsReturnsOAuthCredentialsToRootSettings(t *testing.T) {
 		"wechat-token",
 		"wechat-aes-key",
 		"wechat-server-token",
+		"smtp-access-token",
 	} {
 		assert.Contains(t, response.Body.String(), value)
 	}
-	assert.NotContains(t, response.Body.String(), "smtp-token-must-remain-hidden")
 	for _, value := range []string{"smtp.resend.com", "resend", "noreply@example.com"} {
 		assert.Contains(t, response.Body.String(), value)
 	}
-	assert.Contains(t, response.Body.String(), `"key":"SMTPTokenConfigured","value":"true"`)
 }
 
 func TestAuthTurnstileRejectsFailedResponsesAndReplay(t *testing.T) {

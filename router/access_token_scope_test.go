@@ -4,6 +4,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,6 +19,20 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestPasswordResetRouteDoesNotRequireTurnstile(t *testing.T) {
+	engine := newAccessTokenScopeTestEngine(t)
+	originalTurnstileEnabled := common.TurnstileCheckEnabled
+	common.TurnstileCheckEnabled = true
+	t.Cleanup(func() { common.TurnstileCheckEnabled = originalTurnstileEnabled })
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/reset_password?email=invalid", nil)
+	engine.ServeHTTP(response, request)
+
+	assert.NotContains(t, response.Body.String(), "Turnstile token is empty")
+	assert.Contains(t, response.Body.String(), "Invalid parameters")
+}
 
 // accessTokenExemptRoutes are /api routes that never reach dashboard
 // authentication, so a personal access token has no rule to satisfy there.

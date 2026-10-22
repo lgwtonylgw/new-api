@@ -26,7 +26,6 @@ import type { z } from 'zod'
 
 import { Dialog } from '@/components/dialog'
 import { PasswordInput } from '@/components/password-input'
-import { Turnstile } from '@/components/turnstile'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -44,7 +43,6 @@ import { OAuthProviders } from '@/features/auth/components/oauth-providers'
 import { registerFormSchema } from '@/features/auth/constants'
 import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useEmailVerification } from '@/features/auth/hooks/use-email-verification'
-import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
 import {
   getAffiliateCode,
   saveAffiliateCode,
@@ -67,29 +65,18 @@ export function SignUpForm({
   const [wechatCode, setWeChatCode] = useState('')
   const [isWeChatDialogOpen, setIsWeChatDialogOpen] = useState(false)
   const [isWeChatSubmitting, setIsWeChatSubmitting] = useState(false)
-  const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0)
   const legalConsentErrorMessage = t(
     'Please read and agree to the User Agreement and Privacy Policy first'
   )
 
   const { status } = useStatus()
-  const {
-    isTurnstileEnabled,
-    turnstileSiteKey,
-    turnstileToken,
-    setTurnstileToken,
-    validateTurnstile,
-  } = useTurnstile()
   const { redirectToLogin, handleLoginResult } = useAuthRedirect()
   const {
     isSending: isSendingCode,
     secondsLeft,
     isActive,
     sendCode,
-  } = useEmailVerification({
-    turnstileToken,
-    validateTurnstile,
-  })
+  } = useEmailVerification()
 
   const form = useForm<z.infer<typeof registerFormSchema>>({
     resolver: zodResolver(registerFormSchema),
@@ -123,11 +110,6 @@ export function SignUpForm({
       status?.custom_oauth_providers?.length
     )
   const passwordRegisterEnabled = status?.password_register_enabled !== false
-  const resetTurnstile = () => {
-    setTurnstileToken('')
-    setTurnstileWidgetKey((current) => current + 1)
-  }
-
   const wechatQrCodeUrl = useMemo(() => {
     return (
       status?.wechat_qrcode ||
@@ -197,11 +179,7 @@ export function SignUpForm({
       toast.error(legalConsentErrorMessage)
       return
     }
-    try {
-      await sendCode(emailValue || '')
-    } finally {
-      resetTurnstile()
-    }
+    await sendCode(emailValue || '')
   }
 
   const handleOpenWeChatDialog = () => {
@@ -381,23 +359,6 @@ export function SignUpForm({
                     </FormItem>
                   )}
                 />
-
-                {isTurnstileEnabled && (
-                  <div className='bg-muted/30 grid gap-2 rounded-lg border p-3'>
-                    <p className='text-muted-foreground text-xs'>
-                      {t(
-                        'Complete human verification before requesting an email code.'
-                      )}
-                    </p>
-                    <Turnstile
-                      key={turnstileWidgetKey}
-                      siteKey={turnstileSiteKey}
-                      onVerify={setTurnstileToken}
-                      onExpire={() => setTurnstileToken('')}
-                      className='mx-auto w-full max-w-[300px]'
-                    />
-                  </div>
-                )}
 
                 {/* Verification Code Field */}
                 <div className='flex items-end gap-2'>

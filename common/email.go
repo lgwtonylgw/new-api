@@ -4,11 +4,14 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"net/smtp"
 	"slices"
 	"strings"
 	"time"
 )
+
+var smtpOperationTimeout = 15 * time.Second
 
 func generateMessageID() (string, error) {
 	split := strings.Split(SMTPFrom, "@")
@@ -42,21 +45,33 @@ func smtpTLSConfig() *tls.Config {
 }
 
 func newSMTPClient(addr string) (*smtp.Client, error) {
+	dialer := &net.Dialer{Timeout: smtpOperationTimeout}
+	conn, err := dialer.Dial("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	if err := conn.SetDeadline(time.Now().Add(smtpOperationTimeout)); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+
 	if SMTPSSLEnabled || (SMTPPort == 465 && !SMTPStartTLSEnabled) {
-		conn, err := tls.Dial("tcp", addr, smtpTLSConfig())
-		if err != nil {
+		tlsConn := tls.Client(conn, smtpTLSConfig())
+		if err := tlsConn.Handshake(); err != nil {
+			_ = conn.Close()
 			return nil, err
 		}
-		client, err := smtp.NewClient(conn, SMTPServer)
+		client, err := smtp.NewClient(tlsConn, SMTPServer)
 		if err != nil {
-			_ = conn.Close()
+			_ = tlsConn.Close()
 			return nil, err
 		}
 		return client, nil
 	}
 
-	client, err := smtp.Dial(addr)
+	client, err := smtp.NewClient(conn, SMTPServer)
 	if err != nil {
+		_ = conn.Close()
 		return nil, err
 	}
 

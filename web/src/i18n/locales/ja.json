@@ -4852,7 +4852,7 @@
     "Prompt text filtering is active with the current form values.": "現在のフォーム設定ではプロンプトのテキストフィルターが有効です。",
     "Prompt text filtering needs both switches enabled and a non-empty keyword list.": "プロンプトのテキストフィルターには、両方のスイッチと空でないキーワード一覧が必要です。",
     "Proprietary": "プロプライエタリ",
-    "Protect email verification, password reset, and check-in with Cloudflare Turnstile": "Cloudflare Turnstile でメール認証、パスワードのリセット、チェックインを保護する",
+    "Protect daily check-in with Cloudflare Turnstile": "Cloudflare Turnstile で毎日のチェックインを保護する",
     "Provide a JSON object where each key maps to an endpoint definition.": "各キーがエンドポイント定義にマップされる JSON オブジェクトを提供してください。",
     "Provide a valid URL starting with http:// or https://": "http:// または https:// で始まる有効な URL を入力してください",
     "Provide Markdown, HTML, or an external URL for the privacy policy": "プライバシーポリシーにMarkdown、HTML、または外部URLを提供する",

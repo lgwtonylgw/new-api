@@ -252,6 +252,7 @@ func withSMTPSettings(t *testing.T) {
 	originalSMTPFrom := SMTPFrom
 	originalSMTPToken := SMTPToken
 	originalSystemName := SystemName
+	originalOperationTimeout := smtpOperationTimeout
 
 	t.Cleanup(func() {
 		SMTPServer = originalSMTPServer
@@ -264,7 +265,41 @@ func withSMTPSettings(t *testing.T) {
 		SMTPFrom = originalSMTPFrom
 		SMTPToken = originalSMTPToken
 		SystemName = originalSystemName
+		smtpOperationTimeout = originalOperationTimeout
 	})
+}
+
+func TestSendEmailTimesOutWhenSMTPServerDoesNotSendGreeting(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		conn, acceptErr := listener.Accept()
+		if acceptErr == nil {
+			accepted <- conn
+		}
+	}()
+
+	withSMTPSettings(t)
+	host, portText, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+	SMTPServer = host
+	SMTPPort = port
+	SMTPFrom = "sender@example.com"
+	smtpOperationTimeout = 100 * time.Millisecond
+
+	err = SendEmail("Verification", "receiver@example.com", "<p>123456</p>")
+	require.Error(t, err)
+
+	select {
+	case conn := <-accepted:
+		_ = conn.Close()
+	case <-time.After(time.Second):
+		t.Fatal("SMTP connection was not accepted")
+	}
 }
 
 func TestSendEmailUsesExplicitStartTLSWithInsecureCertificate(t *testing.T) {

@@ -4852,7 +4852,7 @@
     "Prompt text filtering is active with the current form values.": "Với giá trị biểu mẫu hiện tại, lọc văn bản lời nhắc đang hoạt động.",
     "Prompt text filtering needs both switches enabled and a non-empty keyword list.": "Lọc văn bản lời nhắc cần bật cả hai công tắc và có danh sách từ khóa không trống.",
     "Proprietary": "Độc quyền",
-    "Protect email verification, password reset, and check-in with Cloudflare Turnstile": "Bảo vệ xác minh email, đặt lại mật khẩu và điểm danh bằng Cloudflare Turnstile",
+    "Protect daily check-in with Cloudflare Turnstile": "Bảo vệ điểm danh hằng ngày bằng Cloudflare Turnstile",
     "Provide a JSON object where each key maps to an endpoint definition.": "Cung cấp một đối tượng JSON nơi mỗi khóa ánh xạ đến một định nghĩa điểm cuối.",
     "Provide a valid URL starting with http:// or https://": "Cung cấp URL hợp lệ bắt đầu bằng http:// hoặc https://",
     "Provide Markdown, HTML, or an external URL for the privacy policy": "Cung cấp Markdown, HTML, hoặc một URL bên ngoài cho chính sách quyền riêng tư",

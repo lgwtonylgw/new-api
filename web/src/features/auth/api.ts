@@ -153,11 +153,10 @@ export async function logout(): Promise<ApiResponse> {
 
 // Send password reset email
 export async function sendPasswordResetEmail(
-  email: string,
-  turnstile?: string
+  email: string
 ): Promise<ApiResponse> {
   const res = await api.get('/api/reset_password', {
-    params: { email, turnstile },
+    params: { email },
   })
   return res.data
 }
@@ -259,11 +258,10 @@ export async function register(payload: RegisterPayload): Promise<ApiResponse> {
 
 // Send email verification code
 export async function sendEmailVerification(
-  email: string,
-  turnstile?: string
+  email: string
 ): Promise<ApiResponse> {
   const res = await api.get('/api/verification', {
-    params: { email, turnstile },
+    params: { email },
   })
   return res.data
 }

@@ -97,9 +97,7 @@ export function BotProtectionSection({
                 <SettingsSwitchContent>
                   <FormLabel>{t('Enable Turnstile')}</FormLabel>
                   <FormDescription>
-                    {t(
-                      'Protect email verification, password reset, and check-in with Cloudflare Turnstile'
-                    )}
+                    {t('Protect daily check-in with Cloudflare Turnstile')}
                   </FormDescription>
                 </SettingsSwitchContent>
                 <FormControl>

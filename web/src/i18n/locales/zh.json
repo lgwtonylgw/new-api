@@ -4852,7 +4852,7 @@
     "Prompt text filtering is active with the current form values.": "按当前表单设置，提示词文本过滤已生效。",
     "Prompt text filtering needs both switches enabled and a non-empty keyword list.": "提示词文本过滤需要同时开启两个开关，并配置非空的敏感词列表。",
     "Proprietary": "商业闭源",
-    "Protect email verification, password reset, and check-in with Cloudflare Turnstile": "使用 Cloudflare Turnstile 保护邮箱验证、密码重置和签到",
+    "Protect daily check-in with Cloudflare Turnstile": "使用 Cloudflare Turnstile 保护每日签到",
     "Provide a JSON object where each key maps to an endpoint definition.": "提供一个 JSON 对象，其中每个键映射到一个端点定义。",
     "Provide a valid URL starting with http:// or https://": "请提供以 http:// 或 https:// 开头的有效 URL",
     "Provide Markdown, HTML, or an external URL for the privacy policy": "提供 Markdown、HTML 或外部 URL 作为隐私政策",

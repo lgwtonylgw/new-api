@@ -4852,7 +4852,7 @@
     "Prompt text filtering is active with the current form values.": "Le filtrage des prompts est actif avec les valeurs du formulaire.",
     "Prompt text filtering needs both switches enabled and a non-empty keyword list.": "Le filtrage nécessite les deux options activées et une liste de mots-clés non vide.",
     "Proprietary": "Propriétaire",
-    "Protect email verification, password reset, and check-in with Cloudflare Turnstile": "Protéger la vérification des e-mails, la réinitialisation du mot de passe et l'enregistrement avec Cloudflare Turnstile",
+    "Protect daily check-in with Cloudflare Turnstile": "Protéger l'enregistrement quotidien avec Cloudflare Turnstile",
     "Provide a JSON object where each key maps to an endpoint definition.": "Fournissez un objet JSON où chaque clé correspond à une définition de point de terminaison.",
     "Provide a valid URL starting with http:// or https://": "Fournissez une URL valide commençant par http:// ou https://",
     "Provide Markdown, HTML, or an external URL for the privacy policy": "Fournir du Markdown, du HTML ou une URL externe pour la politique de confidentialité",

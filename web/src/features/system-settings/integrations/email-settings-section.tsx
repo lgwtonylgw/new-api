@@ -70,7 +70,6 @@ type EmailFormValues = z.infer<ReturnType<typeof createEmailSchema>>
 
 type EmailSettingsSectionProps = {
   defaultValues: EmailFormValues
-  credentialConfigured: boolean
 }
 
 type SmtpSecurityMode = 'none' | 'ssl_tls' | 'starttls'
@@ -86,7 +85,6 @@ function getSmtpSecurityMode(values: {
 
 export function EmailSettingsSection({
   defaultValues,
-  credentialConfigured,
 }: EmailSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
@@ -151,7 +149,7 @@ export function EmailSettingsSection({
       updates.push({ key: 'SMTPFrom', value: sanitized.SMTPFrom })
     }
 
-    if (sanitized.SMTPToken && sanitized.SMTPToken !== initial.SMTPToken) {
+    if (sanitized.SMTPToken !== initial.SMTPToken) {
       updates.push({ key: 'SMTPToken', value: sanitized.SMTPToken })
     }
 
@@ -402,20 +400,12 @@ export function EmailSettingsSection({
                 <FormControl>
                   <Input
                     autoComplete='off'
-                    type='password'
-                    placeholder={
-                      credentialConfigured
-                        ? t('Configured')
-                        : t('Enter new token to update')
-                    }
+                    type='text'
+                    placeholder={t('Password / Access Token')}
                     {...field}
                     onChange={(event) => field.onChange(event.target.value)}
                   />
                 </FormControl>
-                <FormDescription>
-                  {credentialConfigured && `${t('Configured')}. `}
-                  {t('Leave blank to keep the existing credential')}
-                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}

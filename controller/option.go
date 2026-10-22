@@ -34,7 +34,7 @@ var completionRatioMetaOptionKeys = []string{
 	"AudioCompletionRatio",
 }
 
-var oauthCredentialOptionKeys = map[string]struct{}{
+var adminVisibleCredentialOptionKeys = map[string]struct{}{
 	"GitHubClientSecret":     {},
 	"discord.client_secret":  {},
 	"oidc.client_secret":     {},
@@ -44,10 +44,11 @@ var oauthCredentialOptionKeys = map[string]struct{}{
 	"WeChatCallbackToken":    {},
 	"WeChatEncodingAESKey":   {},
 	"WeChatServerToken":      {},
+	"SMTPToken":              {},
 }
 
-func isOAuthCredentialOptionKey(key string) bool {
-	_, ok := oauthCredentialOptionKeys[key]
+func isAdminVisibleCredentialOptionKey(key string) bool {
+	_, ok := adminVisibleCredentialOptionKeys[key]
 	return ok
 }
 
@@ -101,7 +102,6 @@ func GetOptions(c *gin.Context) {
 	var options []*model.Option
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
-	smtpTokenConfigured := strings.TrimSpace(common.SMTPToken) != ""
 	for k, v := range common.OptionMap {
 		if k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" {
 			continue
@@ -112,7 +112,7 @@ func GetOptions(c *gin.Context) {
 			strings.HasSuffix(k, "Key") ||
 			strings.HasSuffix(k, "secret") ||
 			strings.HasSuffix(k, "api_key")
-		if isSensitiveKey && !isOAuthCredentialOptionKey(k) {
+		if isSensitiveKey && !isAdminVisibleCredentialOptionKey(k) {
 			continue
 		}
 		options = append(options, &model.Option{
@@ -124,10 +124,6 @@ func GetOptions(c *gin.Context) {
 		}
 	}
 	common.OptionMapRWMutex.Unlock()
-	options = append(options, &model.Option{
-		Key:   "SMTPTokenConfigured",
-		Value: strconv.FormatBool(smtpTokenConfigured),
-	})
 	// Display the same effective expressions used by pricing and settlement,
 	// including built-in defaults absent from persisted administrator options.
 	for key, values := range map[string]map[string]string{

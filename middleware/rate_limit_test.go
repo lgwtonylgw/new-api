@@ -2,10 +2,12 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -107,15 +109,41 @@ func TestRedisEmailVerificationRateLimiterPreservesResponseAndTTL(t *testing.T) 
 	})
 
 	remoteAddr := "192.0.2.30:12345"
-	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/verify", remoteAddr).Code)
-	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/verify", remoteAddr).Code)
-	response := performRateLimitRequest(router, "/verify", remoteAddr)
+	path := "/verify?email=User%40Example.com"
+	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, path, remoteAddr).Code)
+	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, path, remoteAddr).Code)
+	response := performRateLimitRequest(router, path, remoteAddr)
 	assert.Equal(t, http.StatusTooManyRequests, response.Code)
+	assert.Equal(t, "30", response.Header().Get("Retry-After"))
 	assert.JSONEq(t, `{"success":false,"message":"Please wait 30 seconds before requesting another verification code.","message_key":"Please wait {{seconds}} seconds before requesting another verification code.","message_params":{"seconds":30}}`, response.Body.String())
 
 	key := redisIPRateLimitKey(EmailVerificationRateLimitMark, "192.0.2.30")
 	assert.True(t, redisServer.Exists(key))
 	assert.Equal(t, time.Duration(EmailVerificationDuration)*time.Second, redisServer.TTL(key))
+	addressKey := emailVerificationAddressRateLimitKey("user@example.com")
+	assert.True(t, redisServer.Exists(addressKey))
+	assert.NotContains(t, addressKey, "user@example.com")
+	assert.Equal(t, time.Duration(EmailAddressDuration)*time.Second, redisServer.TTL(addressKey))
+}
+
+func TestRedisEmailVerificationRateLimiterLimitsAnAddressAcrossIPs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	_, _ = useRateLimitMiniRedis(t)
+
+	router := gin.New()
+	require.NoError(t, router.SetTrustedProxies(nil))
+	router.GET("/verify", EmailVerificationRateLimit(), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	path := "/verify?email=%20USER%40example.com%20"
+	for i := range EmailAddressMaxRequests {
+		remoteAddr := fmt.Sprintf("192.0.2.%d:12345", i+1)
+		assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, path, remoteAddr).Code)
+	}
+	response := performRateLimitRequest(router, path, "198.51.100.10:12345")
+	assert.Equal(t, http.StatusTooManyRequests, response.Code)
+	assert.Equal(t, strconv.Itoa(EmailAddressDuration), response.Header().Get("Retry-After"))
 }
 
 func TestRedisFixedWindowIsAtomicUnderConcurrency(t *testing.T) {
