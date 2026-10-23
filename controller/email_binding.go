@@ -37,6 +37,9 @@ func EmailBindStart(c *gin.Context) {
 		writeSecurityOperationError(c, err)
 		return
 	}
+	if !middleware.EmailVerificationAddressRateLimit(c, email) {
+		return
+	}
 	context, err := common.Marshal(service.AccountBindingContext{Provider: "email", Email: email})
 	if err != nil {
 		writeSecurityOperationError(c, err)
@@ -68,6 +71,14 @@ func EmailBindResend(c *gin.Context) {
 	var request emailBindRequest
 	if err := common.DecodeJson(c.Request.Body, &request); err != nil || request.FlowToken == "" {
 		writeSecurityOperationError(c, model.ErrAuthFlowInvalid)
+		return
+	}
+	_, state, err := model.GetEmailBinding(identity, request.FlowToken)
+	if err != nil {
+		writeSecurityOperationError(c, err)
+		return
+	}
+	if !middleware.EmailVerificationAddressRateLimit(c, state.Email) {
 		return
 	}
 	data, err := service.ResendAccountEmailBinding(identity, request.FlowToken)

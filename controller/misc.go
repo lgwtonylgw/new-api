@@ -224,10 +224,19 @@ func SendEmailVerification(c *gin.Context) {
 	}
 
 	if model.IsEmailAlreadyTaken(email) {
-		common.ApiErrorT(c, "Email address is already in use")
+		// Keep the public response indistinguishable from an accepted request so
+		// this endpoint cannot be used to enumerate registered accounts.
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+		})
 		return
 	}
 	code := common.GenerateVerificationCode(6)
+	if err = common.RegisterVerificationCodeWithKey(email, code, common.EmailVerificationPurpose); err != nil {
+		common.ApiErrorT(c, "Unable to store the verification code. Please try again.")
+		return
+	}
 	// The address may not belong to an account yet, so the mail follows the
 	// request language.
 	systemName := map[string]any{"SystemName": common.SystemName}
@@ -240,10 +249,10 @@ func SendEmailVerification(c *gin.Context) {
 		i18n.T(c, i18n.MsgEmailVerificationValidity, map[string]any{"Minutes": common.VerificationValidMinutes}))
 	err = common.SendEmail(subject, email, content)
 	if err != nil {
+		common.DeleteKey(email, common.EmailVerificationPurpose)
 		common.ApiError(c, err)
 		return
 	}
-	common.RegisterVerificationCodeWithKey(email, code, common.EmailVerificationPurpose)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -259,7 +268,11 @@ func SendPasswordResetEmail(c *gin.Context) {
 	}
 	if user, err := model.GetUniqueUserByEmail(email); err == nil {
 		code := common.GenerateVerificationCode(0)
-		common.RegisterVerificationCodeWithKey(email, code, common.PasswordResetPurpose)
+		if err := common.RegisterVerificationCodeWithKey(email, code, common.PasswordResetPurpose); err != nil {
+			logger.LogError(c.Request.Context(), common.LogText("failed to store password reset code for %s: %s", email, err.Error()))
+			c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
+			return
+		}
 		link := fmt.Sprintf("%s/user/reset?email=%s&token=%s", system_setting.ServerAddress, email, code)
 		lang := user.GetSetting().Language
 		if lang == "" {
@@ -278,6 +291,7 @@ func SendPasswordResetEmail(c *gin.Context) {
 			i18n.Translate(lang, i18n.MsgEmailPasswordResetValidity, map[string]any{"Minutes": common.VerificationValidMinutes}))
 		err := common.SendEmail(subject, email, content)
 		if err != nil {
+			common.DeleteKey(email, common.PasswordResetPurpose)
 			logger.LogError(c.Request.Context(), common.LogText("failed to send password reset email to %s: %s", email, err.Error()))
 		}
 	} else if err != nil && !errors.Is(err, model.ErrEmailNotFound) {

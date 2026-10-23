@@ -9,10 +9,9 @@ import (
 
 const requiredEmailVerificationMigrationKey = "_migration.require_email_verification.v1"
 
-// migrateRequiredEmailVerification enables the existing, end-to-end email
-// verification flow once for installations created before it became the
-// registration default. The marker preserves an administrator's later choice
-// to disable the setting instead of turning it back on at every startup.
+// migrateRequiredEmailVerification makes verification the default when the
+// option has never been configured. Existing administrator choices are kept,
+// and the marker prevents repeating the migration on later startups.
 func migrateRequiredEmailVerification(db *gorm.DB) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		var marker Option
@@ -30,7 +29,7 @@ func migrateRequiredEmailVerification(db *gorm.DB) error {
 		}
 		return tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "key"}},
-			DoUpdates: clause.AssignmentColumns([]string{"value"}),
+			DoNothing: true,
 		}).Create(&options).Error
 	})
 }

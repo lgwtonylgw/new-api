@@ -92,6 +92,35 @@ func memoryEmailVerificationRateLimiter(c *gin.Context) {
 	c.Next()
 }
 
+// EmailVerificationAddressRateLimit applies the destination-address limit to
+// handlers whose email is carried in a JSON body or stored server-side rather
+// than in the query string.
+func EmailVerificationAddressRateLimit(c *gin.Context, email string) bool {
+	addressKey := emailVerificationAddressRateLimitKey(email)
+	if addressKey == "" {
+		return true
+	}
+	if common.RedisEnabled {
+		allowed, _, ttlSeconds, err := redisFixedWindowTake(
+			c.Request.Context(),
+			addressKey,
+			EmailAddressMaxRequests,
+			EmailAddressDuration,
+		)
+		if err == nil {
+			if !allowed {
+				writeEmailVerificationRateLimited(c, ttlSeconds)
+			}
+			return allowed
+		}
+	}
+	if !inMemoryRateLimiter.Request(addressKey, EmailAddressMaxRequests, EmailAddressDuration) {
+		writeEmailVerificationRateLimited(c, EmailAddressDuration)
+		return false
+	}
+	return true
+}
+
 func EmailVerificationRateLimit() gin.HandlerFunc {
 	// Keep the fallback ready before requests arrive so a concurrent Redis
 	// outage cannot race the in-memory limiter's first initialization.

@@ -47,7 +47,7 @@ func emailVerificationMigrationDB(t *testing.T, dialect string) *gorm.DB {
 	return db
 }
 
-func TestMigrateRequiredEmailVerificationEnablesExistingInstallation(t *testing.T) {
+func TestMigrateRequiredEmailVerificationPreservesExistingInstallationChoice(t *testing.T) {
 	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
 			db := emailVerificationMigrationDB(t, dialect)
@@ -60,9 +60,23 @@ func TestMigrateRequiredEmailVerificationEnablesExistingInstallation(t *testing.
 
 			var option Option
 			require.NoError(t, db.Where(&Option{Key: "EmailVerificationEnabled"}).First(&option).Error)
-			require.Equal(t, "true", option.Value)
+			require.Equal(t, "false", option.Value)
 			option = Option{}
 			require.NoError(t, db.Where(&Option{Key: requiredEmailVerificationMigrationKey}).First(&option).Error)
+		})
+	}
+}
+
+func TestMigrateRequiredEmailVerificationEnablesNewInstallation(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			db := emailVerificationMigrationDB(t, dialect)
+
+			require.NoError(t, migrateRequiredEmailVerification(db))
+
+			var option Option
+			require.NoError(t, db.Where(&Option{Key: "EmailVerificationEnabled"}).First(&option).Error)
+			require.Equal(t, "true", option.Value)
 		})
 	}
 }

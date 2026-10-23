@@ -197,6 +197,11 @@ it.each(['login', 'register'])(
     if (mode === 'register') {
       expect(screen.getByLabelText('Confirm password')).toBeVisible()
       expect(screen.getByPlaceholderText('Verification code')).toBeVisible()
+      expect(screen.getByRole('button', { name: 'Send code' })).toBeDisabled()
+      await user.type(
+        screen.getByLabelText('Email (required for verification)'),
+        'user@example.com'
+      )
       expect(screen.getByRole('button', { name: 'Send code' })).toBeEnabled()
       expect(
         screen.queryByRole('button', { name: 'Complete human verification' })

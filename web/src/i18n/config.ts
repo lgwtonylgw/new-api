@@ -26,6 +26,7 @@ import {
   normalizeInterfaceLanguage,
   toIntlLocale,
 } from './languages'
+import zhCN from './locales/zh.json'
 
 const localeLoaders = {
   zhTW: () => import('./locales/zh-TW.json'),
@@ -64,8 +65,14 @@ export const i18nReady = i18n
   .use(lazyLocaleBackend)
   .use(initReactI18next)
   .init({
+    // Bundle the default locale with the entry chunk so first-time visitors can
+    // render immediately. Other locales remain lazy-loaded.
+    resources: {
+      zhCN,
+    },
+    partialBundledLanguages: true,
     // Keep each visitor on one locale bundle. When no language was saved,
-    // normalizeInterfaceLanguage falls back to Traditional Chinese.
+    // normalizeInterfaceLanguage falls back to Simplified Chinese.
     fallbackLng: (language) => normalizeInterfaceLanguage(language),
     supportedLngs: Object.keys(localeLoaders),
     load: 'currentOnly',
@@ -74,8 +81,13 @@ export const i18nReady = i18n
     interpolation: {
       escapeValue: false, // not needed for react as it escapes by default
     },
+    react: {
+      // Keep the application usable while a non-default locale is loading or
+      // when its lazy chunk cannot be downloaded.
+      useSuspense: false,
+    },
     detection: {
-      // First-time visitors use Traditional Chinese. Once selected, a user's
+      // First-time visitors use Simplified Chinese. Once selected, a user's
       // explicit choice is restored from localStorage.
       order: ['localStorage'],
       caches: ['localStorage'],
@@ -85,7 +97,7 @@ export const i18nReady = i18n
   })
 
 function syncDocumentLanguage(language: string) {
-  document.documentElement.lang = toIntlLocale(language) ?? 'zh-TW'
+  document.documentElement.lang = toIntlLocale(language) ?? 'zh-CN'
 }
 
 i18n.on('languageChanged', syncDocumentLanguage)

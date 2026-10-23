@@ -146,6 +146,24 @@ func TestRedisEmailVerificationRateLimiterLimitsAnAddressAcrossIPs(t *testing.T)
 	assert.Equal(t, strconv.Itoa(EmailAddressDuration), response.Header().Get("Retry-After"))
 }
 
+func TestEmailVerificationAddressRateLimitSupportsBodyEmail(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	_, _ = useRateLimitMiniRedis(t)
+
+	for range EmailAddressMaxRequests {
+		recorder := httptest.NewRecorder()
+		context, _ := gin.CreateTestContext(recorder)
+		context.Request = httptest.NewRequest(http.MethodPost, "/bind/start", nil)
+		assert.True(t, EmailVerificationAddressRateLimit(context, " User@Example.com "))
+	}
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodPost, "/bind/start", nil)
+	assert.False(t, EmailVerificationAddressRateLimit(context, "user@example.com"))
+	assert.Equal(t, http.StatusTooManyRequests, recorder.Code)
+}
+
 func TestRedisFixedWindowIsAtomicUnderConcurrency(t *testing.T) {
 	redisServer, _ := useRateLimitMiniRedis(t)
 	const (

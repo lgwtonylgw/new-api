@@ -179,6 +179,8 @@ export function SignUpForm({
       toast.error(legalConsentErrorMessage)
       return
     }
+    const emailIsValid = await form.trigger('email')
+    if (!emailIsValid) return
     await sendCode(emailValue || '')
   }
 
@@ -374,7 +376,9 @@ export function SignUpForm({
                   <Button
                     variant='outline'
                     type='button'
-                    disabled={isLoading || isSendingCode || isActive}
+                    disabled={
+                      isLoading || isSendingCode || isActive || !emailValue
+                    }
                     onClick={handleSendVerificationCode}
                   >
                     {verificationCodeAction}

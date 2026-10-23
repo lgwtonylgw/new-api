@@ -17,8 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 export const INTERFACE_LANGUAGE_OPTIONS = [
-  { code: 'zhTW', label: '繁體中文' },
   { code: 'zhCN', label: '简体中文' },
+  { code: 'zhTW', label: '繁體中文' },
   { code: 'en', label: 'English' },
   { code: 'fr', label: 'Français' },
   { code: 'ru', label: 'Русский' },
@@ -26,7 +26,7 @@ export const INTERFACE_LANGUAGE_OPTIONS = [
   { code: 'vi', label: 'Tiếng Việt' },
 ] as const
 
-export const DEFAULT_INTERFACE_LANGUAGE = 'zhTW'
+export const DEFAULT_INTERFACE_LANGUAGE = 'zhCN'
 
 export type InterfaceLanguageCode =
   (typeof INTERFACE_LANGUAGE_OPTIONS)[number]['code']
@@ -34,6 +34,16 @@ export type InterfaceLanguageCode =
 function normalizeChineseLanguage(value: string): InterfaceLanguageCode {
   if (value === 'zhcn' || value === 'zh-cn' || value.startsWith('zh-hans')) {
     return 'zhCN'
+  }
+
+  if (
+    value === 'zhtw' ||
+    value === 'zh-tw' ||
+    value === 'zh-hk' ||
+    value === 'zh-mo' ||
+    value.startsWith('zh-hant')
+  ) {
+    return 'zhTW'
   }
 
   return DEFAULT_INTERFACE_LANGUAGE

@@ -115,6 +115,10 @@ func SendEmail(subject string, receiver string, content string) error {
 	var err error
 	client, err := newSMTPClient(addr)
 	if err != nil {
+		if networkError, ok := err.(net.Error); ok && networkError.Timeout() {
+			SysError(LogText("SMTP connection to %s timed out: %s", addr, err.Error()))
+			return NewMessage("Unable to connect to {{provider}} server, please try again later", map[string]any{"provider": "SMTP"})
+		}
 		return err
 	}
 	defer client.Close()

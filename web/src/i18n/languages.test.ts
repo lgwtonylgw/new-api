@@ -29,7 +29,7 @@ describe('convertDetectedLanguage', () => {
     expect(convertDetectedLanguage('zh-HK')).toBe('zhTW')
     expect(convertDetectedLanguage('zh-MO')).toBe('zhTW')
     expect(convertDetectedLanguage('zh-Hant-TW')).toBe('zhTW')
-    expect(convertDetectedLanguage('zh')).toBe('zhTW')
+    expect(convertDetectedLanguage('zh')).toBe('zhCN')
     expect(convertDetectedLanguage('zh-CN')).toBe('zhCN')
     expect(convertDetectedLanguage('zh-Hans')).toBe('zhCN')
   })
@@ -47,9 +47,9 @@ describe('convertDetectedLanguage', () => {
 })
 
 describe('normalizeInterfaceLanguage', () => {
-  test('defaults unknown and missing values to Traditional Chinese', () => {
-    expect(normalizeInterfaceLanguage()).toBe('zhTW')
-    expect(normalizeInterfaceLanguage('unsupported')).toBe('zhTW')
+  test('defaults unknown and missing values to Simplified Chinese', () => {
+    expect(normalizeInterfaceLanguage()).toBe('zhCN')
+    expect(normalizeInterfaceLanguage('unsupported')).toBe('zhCN')
   })
 
   test('distinguishes Simplified and Traditional Chinese variants', () => {
@@ -58,7 +58,7 @@ describe('normalizeInterfaceLanguage', () => {
     expect(normalizeInterfaceLanguage('zh-Hans')).toBe('zhCN')
     expect(normalizeInterfaceLanguage('zh-HK')).toBe('zhTW')
     expect(normalizeInterfaceLanguage('zh-TW')).toBe('zhTW')
-    expect(normalizeInterfaceLanguage('zh')).toBe('zhTW')
+    expect(normalizeInterfaceLanguage('zh')).toBe('zhCN')
   })
 
   test('normalizes supported regional language tags', () => {
