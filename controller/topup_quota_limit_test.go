@@ -202,7 +202,14 @@ func TestStripeCreditedQuotaIncludesGroupRatio(t *testing.T) {
 	assert.True(t, decimal.NewFromInt(500000).Equal(getStripeCreditedQuota(1, "free")))
 }
 
-func TestRequestManualAlipayPayCreatesPendingOrderWithoutCreditingBalance(t *testing.T) {
+func TestRequestManualTopUpPayCreatesPendingOrderWithoutCreditingBalance(t *testing.T) {
+	oldRedis := common.RedisEnabled
+	common.RedisEnabled = false
+	t.Cleanup(func() { common.RedisEnabled = oldRedis })
+
+	oldUSDT := *operation_setting.GetPaymentSetting()
+	t.Cleanup(func() { *operation_setting.GetPaymentSetting() = oldUSDT })
+
 	oldDB := model.DB
 	oldQuotaPerUnit := common.QuotaPerUnit
 	oldPrice := operation_setting.Price
@@ -217,8 +224,17 @@ func TestRequestManualAlipayPayCreatesPendingOrderWithoutCreditingBalance(t *tes
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}))
+	sqlDB, connErr := db.DB()
+	require.NoError(t, connErr)
+	sqlDB.SetMaxOpenConns(1)
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}, &model.Log{}))
 	model.DB = db
+	oldLogDB, oldMaster := model.LOG_DB, common.IsMasterNode
+	common.IsMasterNode = false
+	t.Setenv("LOG_SQL_DSN", "")
+	require.NoError(t, model.InitLogDB())
+	common.IsMasterNode = oldMaster
+	t.Cleanup(func() { model.LOG_DB = oldLogDB; common.IsMasterNode = oldMaster })
 	common.QuotaPerUnit = 500000
 	operation_setting.Price = 7.3
 	operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeUSD
@@ -264,7 +280,7 @@ func TestRequestManualAlipayPayCreatesPendingOrderWithoutCreditingBalance(t *tes
 	)
 	ctx.Request.Header.Set("Content-Type", "application/json")
 
-	RequestManualAlipayPay(ctx)
+	RequestManualTopUpPay(ctx)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	assert.Contains(t, recorder.Body.String(), `"message":"success"`)
@@ -280,4 +296,62 @@ func TestRequestManualAlipayPayCreatesPendingOrderWithoutCreditingBalance(t *tes
 	var user model.User
 	require.NoError(t, db.First(&user, 99).Error)
 	assert.Equal(t, 100, user.Quota)
+
+	paymentSetting.USDTManualEnabled = true
+	paymentSetting.USDTNetwork = "TRC20"
+	paymentSetting.USDTAddress = "TT1FCWG4PKGzDXE17LQBRWASiTFiQVTFwp"
+	paymentSetting.USDTExchangeRate = 7.3
+	require.True(t, isManualUSDTTopUpEnabled())
+	assert.Equal(t, float64(10), manualUSDTMoney(73))
+	assert.Equal(t, 1.369864, manualUSDTMoney(10))
+	for _, tc := range []struct {
+		name, method string
+		enabled      bool
+		amount       int64
+		success      bool
+	}{
+		{"disabled", "usdt_manual", false, 10, false},
+		{"unknown method", "usdt", true, 10, false},
+		{"negative amount", "usdt_manual", true, -1, false},
+		{"valid USDT order", "usdt_manual", true, 10, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			paymentSetting.USDTManualEnabled = tc.enabled
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			ctx.Set("id", 99)
+			body, marshalErr := common.Marshal(map[string]any{"amount": tc.amount, "payment_method": tc.method})
+			require.NoError(t, marshalErr)
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/api/user/usdt/manual/pay", strings.NewReader(string(body)))
+			ctx.Request.Header.Set("Content-Type", "application/json")
+			RequestManualTopUpPay(ctx)
+			if !tc.success {
+				assert.NotContains(t, recorder.Body.String(), `"message":"success"`)
+				return
+			}
+			assert.Contains(t, recorder.Body.String(), `"money":10`)
+			assert.Contains(t, recorder.Body.String(), `"network":"TRC20"`)
+			assert.Contains(t, recorder.Body.String(), `"address":"TT1FCWG4PKGzDXE17LQBRWASiTFiQVTFwp"`)
+			var order model.TopUp
+			require.NoError(t, db.Where("payment_provider = ?", model.PaymentProviderUSDTManual).First(&order).Error)
+			assert.Equal(t, float64(10), order.Money)
+			assert.Equal(t, int64(10), order.Amount)
+			assert.Equal(t, common.TopUpStatusPending, order.Status)
+			require.NoError(t, db.First(&user, 99).Error)
+			assert.Equal(t, 100, user.Quota)
+			// Completing a USDT order credits its stored quota once, independent
+			// of later exchange-rate changes and repeated admin submissions.
+			paymentSetting.USDTExchangeRate = 1
+			require.NoError(t, model.ManualCompleteTopUp(order.TradeNo, "127.0.0.1"))
+			require.NoError(t, model.ManualCompleteTopUp(order.TradeNo, "127.0.0.1"))
+			require.NoError(t, db.First(&user, 99).Error)
+			assert.Equal(t, 5_000_100, user.Quota)
+			paymentSetting.USDTExchangeRate = 7.3
+		})
+	}
+	paymentSetting.USDTExchangeRate = 0
+	assert.False(t, isManualUSDTTopUpEnabled())
+	paymentSetting.USDTExchangeRate = 7.3
+	paymentSetting.USDTNetwork = "ERC20"
+	assert.False(t, isManualUSDTTopUpEnabled(), "TRON address must not be offered on Ethereum")
 }

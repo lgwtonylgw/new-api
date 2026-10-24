@@ -137,9 +137,15 @@ export async function requestStripePayment(
 export async function requestManualAlipayPayment(
   request: PaymentRequest
 ): Promise<ManualAlipayPaymentResponse> {
-  const res = await api.post('/api/user/alipay/manual/pay', request, {
-    skipBusinessError: true,
-  } as Record<string, unknown>)
+  const res = await api.post(
+    request.payment_method === 'usdt_manual'
+      ? '/api/user/usdt/manual/pay'
+      : '/api/user/alipay/manual/pay',
+    request,
+    {
+      skipBusinessError: true,
+    } as Record<string, unknown>
+  )
   return res.data
 }
 

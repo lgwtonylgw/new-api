@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Calcium-Ion/go-epay/epay"
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -175,6 +176,47 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 
 	operation_setting.PayMethods = nil
 	require.False(t, isEpayWebhookEnabled())
+}
+
+func TestEpusdtPaymentMethodAppearsOnlyWithIndependentConfiguration(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	s := operation_setting.GetPaymentSetting()
+	oldEnabled, oldAddress, oldPID, oldKey := s.EpusdtEnabled, s.EpusdtPayAddress, s.EpusdtMerchantID, s.EpusdtSecretKey
+	oldMethods := operation_setting.PayMethods
+	t.Cleanup(func() {
+		s.EpusdtEnabled, s.EpusdtPayAddress, s.EpusdtMerchantID, s.EpusdtSecretKey = oldEnabled, oldAddress, oldPID, oldKey
+		operation_setting.PayMethods = oldMethods
+	})
+	operation_setting.PayMethods = []map[string]string{{"type": model.PaymentMethodEpusdtTRC20}}
+	s.EpusdtEnabled = true
+	s.EpusdtPayAddress = "https://usdt.example.com/payments/epay/v1/order/create-transaction"
+	s.EpusdtMerchantID = "not-a-number"
+	s.EpusdtSecretKey = "secret"
+	require.False(t, isEpusdtTopUpEnabled())
+	s.EpusdtMerchantID = "1000"
+	require.True(t, isEpusdtTopUpEnabled())
+	s.EpusdtPayAddress = "https://usdt.example.com"
+	require.False(t, isEpusdtTopUpEnabled())
+	s.EpusdtPayAddress = "https://usdt.example.com/payments/epay/v1/order/create-transaction"
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	GetTopUpInfo(ctx)
+	var response struct {
+		Data struct {
+			PayMethods []map[string]string `json:"pay_methods"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(rec.Body.Bytes(), &response))
+	require.Len(t, response.Data.PayMethods, 1)
+	assert.Equal(t, model.PaymentMethodEpusdtTRC20, response.Data.PayMethods[0]["type"])
+
+	s.EpusdtEnabled = false
+	rec = httptest.NewRecorder()
+	ctx, _ = gin.CreateTestContext(rec)
+	GetTopUpInfo(ctx)
+	require.NoError(t, common.Unmarshal(rec.Body.Bytes(), &response))
+	assert.Empty(t, response.Data.PayMethods)
 }
 
 func TestManualAlipayTopUpRequiresComplianceToggleAndHTTPSQRCode(t *testing.T) {

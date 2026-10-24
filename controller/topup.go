@@ -29,7 +29,14 @@ func GetTopUpInfo(c *gin.Context) {
 	// 获取支付方式
 	payMethods := make([]map[string]string, 0, len(operation_setting.PayMethods)+1)
 	if complianceConfirmed && isEpayTopUpEnabled() {
-		payMethods = append(payMethods, operation_setting.PayMethods...)
+		for _, method := range operation_setting.PayMethods {
+			if method["type"] != model.PaymentMethodEpusdtTRC20 {
+				payMethods = append(payMethods, method)
+			}
+		}
+	}
+	if isEpusdtTopUpEnabled() {
+		payMethods = append(payMethods, map[string]string{"name": "USDT-TRC20", "type": model.PaymentMethodEpusdtTRC20, "icon": "SiTether"})
 	}
 
 	// 如果启用了 Stripe 支付，添加到支付方法列表
@@ -98,7 +105,7 @@ func GetTopUpInfo(c *gin.Context) {
 	}
 
 	data := gin.H{
-		"enable_online_topup":              isEpayTopUpEnabled() || isManualAlipayTopUpEnabled(),
+		"enable_online_topup":              isEpayTopUpEnabled() || isEpusdtTopUpEnabled() || isManualAlipayTopUpEnabled() || isManualUSDTTopUpEnabled(),
 		"enable_stripe_topup":              isStripeTopUpEnabled(),
 		"enable_creem_topup":               isCreemTopUpEnabled(),
 		"enable_waffo_topup":               enableWaffo,
@@ -131,6 +138,10 @@ func GetTopUpInfo(c *gin.Context) {
 		})
 		data["pay_methods"] = payMethods
 	}
+	if isManualUSDTTopUpEnabled() {
+		payMethods = append(payMethods, map[string]string{"name": "USDT", "type": model.PaymentMethodUSDTManual, "icon": "SiTether"})
+		data["pay_methods"] = payMethods
+	}
 	common.ApiSuccess(c, data)
 }
 
@@ -140,7 +151,8 @@ type EpayRequest struct {
 }
 
 type AmountRequest struct {
-	Amount int64 `json:"amount"`
+	Amount        int64  `json:"amount"`
+	PaymentMethod string `json:"payment_method"`
 }
 
 func GetEpayClient() *epay.Client {
@@ -155,6 +167,18 @@ func GetEpayClient() *epay.Client {
 		return nil
 	}
 	return withUrl
+}
+
+func GetEpusdtClient() *epay.Client {
+	s := operation_setting.GetPaymentSetting()
+	if !isEpusdtWebhookConfigured() {
+		return nil
+	}
+	client, err := epay.NewClient(&epay.Config{PartnerID: s.EpusdtMerchantID, Key: s.EpusdtSecretKey}, s.EpusdtPayAddress)
+	if err != nil {
+		return nil
+	}
+	return client
 }
 
 func getPayMoney(amount int64, group string) float64 {
@@ -315,8 +339,10 @@ func RequestEpay(c *gin.Context) {
 		paymentError(c, common.NewMessage("Payment amount is too low"))
 		return
 	}
+	quotedMoney := decimal.NewFromFloat(payMoney).Round(2)
 
-	if !operation_setting.ContainsPayMethod(req.PaymentMethod) {
+	isEpusdt := req.PaymentMethod == model.PaymentMethodEpusdtTRC20
+	if (isEpusdt && !isEpusdtTopUpEnabled()) || (!isEpusdt && (!isEpayTopUpEnabled() || !operation_setting.ContainsPayMethod(req.PaymentMethod))) {
 		paymentError(c, common.NewMessage("Payment method does not exist"))
 		return
 	}
@@ -324,9 +350,15 @@ func RequestEpay(c *gin.Context) {
 	callBackAddress := service.GetCallbackAddress()
 	returnUrl, _ := url.Parse(paymentReturnPath("/usage-logs"))
 	notifyUrl, _ := url.Parse(callBackAddress + "/api/user/epay/notify")
+	provider := model.PaymentProviderEpay
+	client := GetEpayClient()
+	if isEpusdt {
+		provider = model.PaymentProviderEpusdt
+		notifyUrl, _ = url.Parse(callBackAddress + "/api/user/epusdt/notify")
+		client = GetEpusdtClient()
+	}
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("USR%dNO%s", id, tradeNo)
-	client := GetEpayClient()
 	if client == nil {
 		paymentError(c, common.NewMessage("Payment information has not been configured by administrator"))
 		return
@@ -335,7 +367,7 @@ func RequestEpay(c *gin.Context) {
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
 		Name:           fmt.Sprintf("TUC%d", req.Amount),
-		Money:          strconv.FormatFloat(payMoney, 'f', 2, 64),
+		Money:          quotedMoney.StringFixed(2),
 		Device:         epay.PC,
 		NotifyUrl:      notifyUrl,
 		ReturnUrl:      returnUrl,
@@ -354,10 +386,10 @@ func RequestEpay(c *gin.Context) {
 	topUp := &model.TopUp{
 		UserId:          id,
 		Amount:          amount,
-		Money:           payMoney,
+		Money:           quotedMoney.InexactFloat64(),
 		TradeNo:         tradeNo,
 		PaymentMethod:   req.PaymentMethod,
-		PaymentProvider: model.PaymentProviderEpay,
+		PaymentProvider: provider,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
@@ -414,7 +446,27 @@ func UnlockOrder(tradeNo string) {
 }
 
 func EpayNotify(c *gin.Context) {
-	if !isEpayWebhookEnabled() {
+	processEpayNotify(c, model.PaymentProviderEpay)
+}
+
+func EpusdtNotify(c *gin.Context) {
+	processEpayNotify(c, model.PaymentProviderEpusdt)
+}
+
+func processEpayNotify(c *gin.Context, provider string) {
+	configured := false
+	var client *epay.Client
+	merchantID := ""
+	if provider == model.PaymentProviderEpusdt {
+		configured = isEpusdtWebhookConfigured()
+		client = GetEpusdtClient()
+		merchantID = operation_setting.GetPaymentSetting().EpusdtMerchantID
+	} else {
+		configured = isEpayWebhookEnabled()
+		client = GetEpayClient()
+		merchantID = operation_setting.EpayId
+	}
+	if !configured {
 		logger.LogWarn(c.Request.Context(), common.LogText("Epay webhook rejected reason=webhook_disabled path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
@@ -447,7 +499,6 @@ func EpayNotify(c *gin.Context) {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
-	client := GetEpayClient()
 	if client == nil {
 		logger.LogError(c.Request.Context(), common.LogText("Epay client is not initialized path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
 		_, err := c.Writer.Write([]byte("fail"))
@@ -468,6 +519,12 @@ func EpayNotify(c *gin.Context) {
 		}
 		return
 	}
+	if params["pid"] != merchantID || verifyInfo.Type == "" || verifyInfo.Money == "" ||
+		(provider == model.PaymentProviderEpusdt && verifyInfo.Type != model.PaymentMethodEpusdtTRC20) {
+		logger.LogWarn(c.Request.Context(), common.LogText("Epay webhook rejected mismatched merchant or missing payment details trade_no=%s", verifyInfo.ServiceTradeNo))
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
 	logger.LogInfo(c.Request.Context(), common.LogText("Epay webhook signature verified trade_no=%s callback_type=%s trade_status=%s client_ip=%s verify_info=%q", verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.TradeStatus, c.ClientIP(), common.GetJsonString(verifyInfo)))
 
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
@@ -475,7 +532,7 @@ func EpayNotify(c *gin.Context) {
 		// 数据库行锁 + 事务内状态校验保证（多实例部署下同样安全）。
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		alreadyDone, err := model.RechargeEpay(verifyInfo.ServiceTradeNo, verifyInfo.Type, c.ClientIP())
+		alreadyDone, err := model.RechargeEpayForProvider(verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.Money, provider, c.ClientIP())
 		if err != nil {
 			switch {
 			case errors.Is(err, model.ErrTopUpNotFound):
@@ -484,6 +541,8 @@ func EpayNotify(c *gin.Context) {
 				logger.LogWarn(c.Request.Context(), common.LogText("Epay order payment gateway mismatch trade_no=%s callback_type=%s client_ip=%s", verifyInfo.ServiceTradeNo, verifyInfo.Type, c.ClientIP()))
 			case errors.Is(err, model.ErrTopUpStatusInvalid):
 				logger.LogWarn(c.Request.Context(), common.LogText("Epay order status invalid trade_no=%s callback_type=%s client_ip=%s", verifyInfo.ServiceTradeNo, verifyInfo.Type, c.ClientIP()))
+			case errors.Is(err, model.ErrPaymentAmountMismatch):
+				logger.LogWarn(c.Request.Context(), common.LogText("Epay order payment amount mismatch trade_no=%s client_ip=%s", verifyInfo.ServiceTradeNo, c.ClientIP()))
 			default:
 				logger.LogError(c.Request.Context(), common.LogText("Epay top-up processing failed trade_no=%s client_ip=%s error=%q", verifyInfo.ServiceTradeNo, c.ClientIP(), err.Error()))
 			}
@@ -527,6 +586,19 @@ func RequestAmount(c *gin.Context) {
 		return
 	}
 	payMoney := getPayMoney(req.Amount, group)
+	if req.PaymentMethod == model.PaymentMethodUSDTManual {
+		if !isManualUSDTTopUpEnabled() {
+			paymentError(c, common.NewMessage("This payment method is not configured"))
+			return
+		}
+		payMoney = manualUSDTMoney(payMoney)
+		if payMoney <= 0 {
+			paymentError(c, common.NewMessage("Payment amount is too low"))
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "success", "data": strconv.FormatFloat(payMoney, 'f', 6, 64)})
+		return
+	}
 	if payMoney <= 0.01 {
 		paymentError(c, common.NewMessage("Payment amount is too low"))
 		return

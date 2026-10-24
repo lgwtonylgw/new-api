@@ -5,9 +5,17 @@ import "github.com/QuantumNous/new-api/setting/config"
 type PaymentSetting struct {
 	AmountOptions       []int           `json:"amount_options"`
 	AmountDiscount      map[int]float64 `json:"amount_discount"` // 充值金额对应的折扣，例如 100 元 0.9 表示 100 元充值享受 9 折优惠
-	AlipayManualEnabled bool       `json:"alipay_manual_enabled"`
-	AlipayQRCodeURL     string     `json:"alipay_qr_code_url"`
-	AlipayPayeeName     string     `json:"alipay_payee_name"`
+	AlipayManualEnabled bool            `json:"alipay_manual_enabled"`
+	AlipayQRCodeURL     string          `json:"alipay_qr_code_url"`
+	AlipayPayeeName     string          `json:"alipay_payee_name"`
+	USDTManualEnabled   bool            `json:"usdt_manual_enabled"`
+	USDTNetwork         string          `json:"usdt_network"`
+	USDTAddress         string          `json:"usdt_address"`
+	USDTExchangeRate    float64         `json:"usdt_exchange_rate"`
+	EpusdtEnabled       bool            `json:"epusdt_enabled"`
+	EpusdtPayAddress    string          `json:"epusdt_pay_address"`
+	EpusdtMerchantID    string          `json:"epusdt_merchant_id"`
+	EpusdtSecretKey     string          `json:"epusdt_secret_key"`
 
 	ComplianceConfirmed    bool   `json:"compliance_confirmed"`
 	ComplianceTermsVersion string `json:"compliance_terms_version"`

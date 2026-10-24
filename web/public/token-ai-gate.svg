@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <title>Token AI Gate</title>
+  <defs>
+    <linearGradient id="bg" x1="32" y1="16" x2="224" y2="256" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#193C74"/>
+      <stop offset="1" stop-color="#0B1734"/>
+    </linearGradient>
+  </defs>
+  <circle cx="128" cy="128" r="124" fill="url(#bg)"/>
+  <path d="M64 188V88C64 74.745 74.745 64 88 64H168C181.255 64 192 74.745 192 88V188H168V92C168 89.791 166.209 88 164 88H92C89.791 88 88 89.791 88 92V188H64Z" fill="#F4FAFF"/>
+  <path d="M104 108H152V132H140V188H116V132H104V108Z" fill="#43E8D8"/>
+</svg>

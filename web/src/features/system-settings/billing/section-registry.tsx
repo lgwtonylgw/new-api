@@ -133,6 +133,9 @@ const BILLING_SECTIONS = [
     titleKey: 'Payment Gateway',
     build: (settings: BillingSettings) => (
       <PaymentSettingsSection
+        epusdtSecretConfigured={
+          settings['payment_setting.epusdt_secret_configured'] ?? false
+        }
         defaultValues={{
           PayAddress: settings.PayAddress,
           EpayId: settings.EpayId,
@@ -141,6 +144,17 @@ const BILLING_SECTIONS = [
           MinTopUp: settings.MinTopUp,
           CustomCallbackAddress: settings.CustomCallbackAddress,
           PayMethods: settings.PayMethods,
+          USDTManualEnabled:
+            settings['payment_setting.usdt_manual_enabled'] ?? false,
+          USDTNetwork: settings['payment_setting.usdt_network'] ?? '',
+          USDTAddress: settings['payment_setting.usdt_address'] ?? '',
+          USDTExchangeRate: settings['payment_setting.usdt_exchange_rate'] ?? 0,
+          EpusdtEnabled: settings['payment_setting.epusdt_enabled'] ?? false,
+          EpusdtPayAddress:
+            settings['payment_setting.epusdt_pay_address'] ?? '',
+          EpusdtMerchantID:
+            settings['payment_setting.epusdt_merchant_id'] ?? '',
+          EpusdtSecretKey: settings['payment_setting.epusdt_secret_key'] ?? '',
           AlipayManualEnabled:
             settings['payment_setting.alipay_manual_enabled'] ?? false,
           AlipayQRCodeURL: settings['payment_setting.alipay_qr_code_url'] ?? '',

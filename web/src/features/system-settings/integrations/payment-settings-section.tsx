@@ -121,6 +121,31 @@ const paymentSchema = z.object({
       })
     }
   }),
+  USDTManualEnabled: z.boolean().default(false),
+  USDTNetwork: z.string().default(''),
+  USDTAddress: z.string().default(''),
+  USDTExchangeRate: z.coerce.number().finite().min(0).default(0),
+  EpusdtEnabled: z.boolean().default(false),
+  EpusdtPayAddress: z.string().refine((value) => {
+    if (!value.trim()) return true
+    try {
+      const endpoint = new URL(value.trim())
+      return (
+        endpoint.protocol === 'https:' &&
+        endpoint.hostname !== '' &&
+        !endpoint.username &&
+        !endpoint.password &&
+        !endpoint.search &&
+        !endpoint.hash &&
+        endpoint.pathname.replace(/\/$/, '') ===
+          '/payments/epay/v1/order/create-transaction'
+      )
+    } catch {
+      return false
+    }
+  }, 'Provide a valid HTTPS gateway URL'),
+  EpusdtMerchantID: z.string(),
+  EpusdtSecretKey: z.string(),
   AlipayManualEnabled: z.boolean(),
   AlipayQRCodeURL: z.string().refine((value) => {
     const trimmed = value.trim()
@@ -190,8 +215,19 @@ type PaymentFormValues = z.infer<typeof paymentSchema>
 type WaffoFormFieldValues = Omit<WaffoSettingsValues, 'WaffoPayMethods'>
 type PaymentBaseFormValues = Omit<
   PaymentFormValues,
-  keyof WaffoFormFieldValues | keyof WaffoPancakeSettingsValues
->
+  | keyof WaffoFormFieldValues
+  | keyof WaffoPancakeSettingsValues
+  | 'USDTManualEnabled'
+  | 'USDTNetwork'
+  | 'USDTAddress'
+  | 'USDTExchangeRate'
+> &
+  Partial<
+    Pick<
+      PaymentFormValues,
+      'USDTManualEnabled' | 'USDTNetwork' | 'USDTAddress' | 'USDTExchangeRate'
+    >
+  >
 
 const CURRENT_COMPLIANCE_TERMS_VERSION = 'v1'
 const paymentTabContentClassName = 'mt-6 min-w-0'
@@ -205,6 +241,7 @@ type PaymentComplianceDefaults = {
 
 type PaymentSettingsSectionProps = {
   defaultValues: PaymentBaseFormValues
+  epusdtSecretConfigured?: boolean
   waffoDefaultValues: WaffoSettingsValues
   waffoPancakeDefaultValues: WaffoPancakeSettingsValues
   waffoPancakeProvisionedStoreID?: string
@@ -223,6 +260,7 @@ function parseWaffoPayMethods(value: string): PayMethod[] {
 
 export function PaymentSettingsSection({
   defaultValues,
+  epusdtSecretConfigured = false,
   waffoDefaultValues,
   waffoPancakeDefaultValues,
   waffoPancakeProvisionedStoreID,
@@ -234,6 +272,10 @@ export function PaymentSettingsSection({
   const updateOption = useUpdateOption()
   const initialFormValues = React.useMemo<PaymentFormValues>(
     () => ({
+      USDTManualEnabled: false,
+      USDTNetwork: '',
+      USDTAddress: '',
+      USDTExchangeRate: 0,
       ...defaultValues,
       ...waffoDefaultValues,
       ...waffoPancakeDefaultValues,
@@ -433,6 +475,14 @@ export function PaymentSettingsSection({
       MinTopUp: values.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(values.CustomCallbackAddress),
       PayMethods: values.PayMethods.trim(),
+      USDTManualEnabled: values.USDTManualEnabled ?? false,
+      USDTNetwork: values.USDTNetwork ?? '',
+      USDTAddress: values.USDTAddress ?? '',
+      USDTExchangeRate: values.USDTExchangeRate ?? 0,
+      EpusdtEnabled: values.EpusdtEnabled ?? false,
+      EpusdtPayAddress: removeTrailingSlash(values.EpusdtPayAddress),
+      EpusdtMerchantID: values.EpusdtMerchantID.trim(),
+      EpusdtSecretKey: values.EpusdtSecretKey.trim(),
       AlipayManualEnabled: values.AlipayManualEnabled,
       AlipayQRCodeURL: values.AlipayQRCodeURL.trim(),
       AlipayPayeeName: values.AlipayPayeeName.trim(),
@@ -480,6 +530,16 @@ export function PaymentSettingsSection({
         initialRef.current.CustomCallbackAddress
       ),
       PayMethods: initialRef.current.PayMethods.trim(),
+      USDTManualEnabled: initialRef.current.USDTManualEnabled ?? false,
+      USDTNetwork: initialRef.current.USDTNetwork ?? '',
+      USDTAddress: initialRef.current.USDTAddress ?? '',
+      USDTExchangeRate: initialRef.current.USDTExchangeRate ?? 0,
+      EpusdtEnabled: initialRef.current.EpusdtEnabled ?? false,
+      EpusdtPayAddress: removeTrailingSlash(
+        initialRef.current.EpusdtPayAddress
+      ),
+      EpusdtMerchantID: initialRef.current.EpusdtMerchantID.trim(),
+      EpusdtSecretKey: initialRef.current.EpusdtSecretKey.trim(),
       AlipayManualEnabled: initialRef.current.AlipayManualEnabled,
       AlipayQRCodeURL: initialRef.current.AlipayQRCodeURL.trim(),
       AlipayPayeeName: initialRef.current.AlipayPayeeName.trim(),
@@ -520,7 +580,57 @@ export function PaymentSettingsSection({
       ),
     }
 
+    if (sanitized.USDTManualEnabled) {
+      const address = sanitized.USDTAddress.trim()
+      const network = sanitized.USDTNetwork.trim().toUpperCase()
+      const validAddress =
+        network === 'TRC20'
+          ? /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address)
+          : network === 'ERC20' && /^0x[0-9a-fA-F]{40}$/.test(address)
+      if (!validAddress) {
+        form.setError('USDTAddress', {
+          message: t('Enter a valid receiving address for TRC20 or ERC20'),
+        })
+        return
+      }
+      if (sanitized.USDTExchangeRate <= 0) {
+        form.setError('USDTExchangeRate', {
+          message: t('Set a positive exchange rate before enabling USDT'),
+        })
+        return
+      }
+      sanitized.USDTAddress = address
+      sanitized.USDTNetwork = network
+    }
     const updates: Array<{ key: string; value: string | number | boolean }> = []
+
+    if (sanitized.EpusdtPayAddress !== initial.EpusdtPayAddress) {
+      updates.push({
+        key: 'payment_setting.epusdt_pay_address',
+        value: sanitized.EpusdtPayAddress,
+      })
+    }
+    if (sanitized.EpusdtMerchantID !== initial.EpusdtMerchantID) {
+      updates.push({
+        key: 'payment_setting.epusdt_merchant_id',
+        value: sanitized.EpusdtMerchantID,
+      })
+    }
+    if (
+      sanitized.EpusdtSecretKey &&
+      sanitized.EpusdtSecretKey !== initial.EpusdtSecretKey
+    ) {
+      updates.push({
+        key: 'payment_setting.epusdt_secret_key',
+        value: sanitized.EpusdtSecretKey,
+      })
+    }
+    if (sanitized.EpusdtEnabled !== initial.EpusdtEnabled) {
+      updates.push({
+        key: 'payment_setting.epusdt_enabled',
+        value: sanitized.EpusdtEnabled,
+      })
+    }
 
     if (sanitized.PayAddress !== initial.PayAddress) {
       updates.push({ key: 'PayAddress', value: sanitized.PayAddress })
@@ -556,6 +666,30 @@ export function PaymentSettingsSection({
       updates.push({ key: 'PayMethods', value: sanitized.PayMethods })
     }
 
+    if (sanitized.USDTNetwork !== initial.USDTNetwork) {
+      updates.push({
+        key: 'payment_setting.usdt_network',
+        value: sanitized.USDTNetwork,
+      })
+    }
+    if (sanitized.USDTAddress !== initial.USDTAddress) {
+      updates.push({
+        key: 'payment_setting.usdt_address',
+        value: sanitized.USDTAddress,
+      })
+    }
+    if (sanitized.USDTExchangeRate !== initial.USDTExchangeRate) {
+      updates.push({
+        key: 'payment_setting.usdt_exchange_rate',
+        value: sanitized.USDTExchangeRate,
+      })
+    }
+    if (sanitized.USDTManualEnabled !== initial.USDTManualEnabled) {
+      updates.push({
+        key: 'payment_setting.usdt_manual_enabled',
+        value: sanitized.USDTManualEnabled,
+      })
+    }
     if (sanitized.AlipayManualEnabled !== initial.AlipayManualEnabled) {
       updates.push({
         key: 'payment_setting.alipay_manual_enabled',
@@ -599,7 +733,10 @@ export function PaymentSettingsSection({
       sanitized.StripeApiSecret &&
       sanitized.StripeApiSecret !== initial.StripeApiSecret
     ) {
-      updates.push({ key: 'StripeApiSecret', value: sanitized.StripeApiSecret })
+      updates.push({
+        key: 'StripeApiSecret',
+        value: sanitized.StripeApiSecret,
+      })
     }
 
     if (
@@ -617,7 +754,10 @@ export function PaymentSettingsSection({
     }
 
     if (sanitized.StripeUnitPrice !== initial.StripeUnitPrice) {
-      updates.push({ key: 'StripeUnitPrice', value: sanitized.StripeUnitPrice })
+      updates.push({
+        key: 'StripeUnitPrice',
+        value: sanitized.StripeUnitPrice,
+      })
     }
 
     if (sanitized.StripeMinTopUp !== initial.StripeMinTopUp) {
@@ -671,7 +811,10 @@ export function PaymentSettingsSection({
     }
 
     if (sanitized.WaffoMerchantId !== initial.WaffoMerchantId) {
-      updates.push({ key: 'WaffoMerchantId', value: sanitized.WaffoMerchantId })
+      updates.push({
+        key: 'WaffoMerchantId',
+        value: sanitized.WaffoMerchantId,
+      })
     }
 
     if (sanitized.WaffoCurrency !== initial.WaffoCurrency) {
@@ -695,7 +838,10 @@ export function PaymentSettingsSection({
     }
 
     if (sanitized.WaffoPublicCert !== initial.WaffoPublicCert) {
-      updates.push({ key: 'WaffoPublicCert', value: sanitized.WaffoPublicCert })
+      updates.push({
+        key: 'WaffoPublicCert',
+        value: sanitized.WaffoPublicCert,
+      })
     }
 
     if (sanitized.WaffoSandboxPublicCert !== initial.WaffoSandboxPublicCert) {
@@ -710,7 +856,10 @@ export function PaymentSettingsSection({
     }
 
     if (sanitized.WaffoPrivateKey) {
-      updates.push({ key: 'WaffoPrivateKey', value: sanitized.WaffoPrivateKey })
+      updates.push({
+        key: 'WaffoPrivateKey',
+        value: sanitized.WaffoPrivateKey,
+      })
     }
 
     if (sanitized.WaffoSandboxApiKey) {
@@ -731,7 +880,10 @@ export function PaymentSettingsSection({
       normalizeJsonForComparison(sanitized.WaffoPayMethods) !==
       normalizeJsonForComparison(initial.WaffoPayMethods)
     ) {
-      updates.push({ key: 'WaffoPayMethods', value: sanitized.WaffoPayMethods })
+      updates.push({
+        key: 'WaffoPayMethods',
+        value: sanitized.WaffoPayMethods,
+      })
     }
 
     const hasWaffoPancakeChanges =
@@ -913,12 +1065,14 @@ export function PaymentSettingsSection({
           />
           <Tabs defaultValue='general' className='min-w-0'>
             <div className='overflow-x-auto pb-1'>
-              <TabsList className='grid min-w-[52rem] grid-cols-7'>
+              <TabsList className='grid min-w-[64rem] grid-cols-9'>
                 <TabsTrigger value='general'>{t('General')}</TabsTrigger>
                 <TabsTrigger value='epay'>Epay</TabsTrigger>
+                <TabsTrigger value='epusdt'>epusdt</TabsTrigger>
                 <TabsTrigger value='alipay-manual'>
                   {t('Alipay QR')}
                 </TabsTrigger>
+                <TabsTrigger value='usdt-manual'>USDT</TabsTrigger>
                 <TabsTrigger value='stripe'>{t('Stripe')}</TabsTrigger>
                 <TabsTrigger value='creem'>Creem</TabsTrigger>
                 <TabsTrigger value='waffo-pancake'>Waffo Pancake</TabsTrigger>
@@ -994,6 +1148,24 @@ export function PaymentSettingsSection({
                     <FormItem>
                       <div className='mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
                         <FormLabel>{t('Payment methods')}</FormLabel>
+                        <Button
+                          type='button'
+                          variant='outline'
+                          size='sm'
+                          onClick={() => {
+                            field.onChange(
+                              JSON.stringify([
+                                {
+                                  name: '支付宝',
+                                  type: 'alipay',
+                                  icon: 'SiAlipay',
+                                },
+                              ])
+                            )
+                          }}
+                        >
+                          {t('Use AliMPay (Alipay only)')}
+                        </Button>
                         <Button
                           type='button'
                           variant='outline'
@@ -1192,6 +1364,12 @@ export function PaymentSettingsSection({
                   </AlertDescription>
                 </Alert>
 
+                <p className='text-muted-foreground text-sm'>
+                  {t(
+                    'AliMPay setup: deploy it at an HTTPS address, copy its V1 merchant ID and key into the fields below, then select the AliMPay payment method preset above. AliMPay sends a signed payment notification to this site after confirming the Alipay receipt.'
+                  )}
+                </p>
+
                 <div className='grid gap-6 md:grid-cols-2'>
                   <FormField
                     control={form.control}
@@ -1292,6 +1470,112 @@ export function PaymentSettingsSection({
               </div>
             </TabsContent>
 
+            <TabsContent value='epusdt' className={paymentTabContentClassName}>
+              <div className='space-y-6'>
+                <div>
+                  <h3 className='text-lg font-medium'>epusdt / USDT-TRC20</h3>
+                  <p className='text-muted-foreground text-sm'>
+                    {t(
+                      'Run epusdt as a separate service. Configure its EPay merchant credentials here; USDT top-ups appear after this gateway is enabled.'
+                    )}
+                  </p>
+                </div>
+                <FormField
+                  control={form.control}
+                  name='EpusdtEnabled'
+                  render={({ field }) => (
+                    <SettingsSwitchItem>
+                      <SettingsSwitchContent>
+                        <FormLabel>{t('Enable epusdt USDT-TRC20')}</FormLabel>
+                        <FormDescription>
+                          {t(
+                            'Enable after completing the gateway and wallet setup'
+                          )}
+                        </FormDescription>
+                      </SettingsSwitchContent>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </SettingsSwitchItem>
+                  )}
+                />
+                <div className='grid gap-6 md:grid-cols-2'>
+                  <FormField
+                    control={form.control}
+                    name='EpusdtPayAddress'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('epusdt EPay endpoint')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder='https://usdt.example.com/payments/epay/v1/order/create-transaction'
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t('Base URL without /submit.php')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name='EpusdtMerchantID'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('epusdt merchant PID')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder='1000'
+                            autoComplete='off'
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t('Use the numeric PID assigned by epusdt')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name='EpusdtSecretKey'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('epusdt EPay secret key')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='password'
+                            placeholder={t('Enter new key to update')}
+                            autoComplete='new-password'
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {epusdtSecretConfigured
+                            ? t(
+                                'Secret configured. Leave blank to keep the current key.'
+                              )
+                            : t('Enter the EPay secret from epusdt')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <p className='text-muted-foreground text-sm'>
+                  {t(
+                    'Set epusdt default currency to CNY. Payment notification URL: /api/user/epusdt/notify. Configure the callback origin on the Epay tab.'
+                  )}
+                </p>
+              </div>
+            </TabsContent>
+
             <TabsContent
               value='alipay-manual'
               className={paymentTabContentClassName}
@@ -1352,6 +1636,21 @@ export function PaymentSettingsSection({
                     )}
                   />
 
+                  <div className='flex items-end'>
+                    <Button
+                      type='button'
+                      variant='outline'
+                      onClick={() =>
+                        form.setValue(
+                          'AlipayQRCodeURL',
+                          `${window.location.origin}/alipay-receive.png`,
+                          { shouldDirty: true }
+                        )
+                      }
+                    >
+                      {t('Use uploaded Alipay QR')}
+                    </Button>
+                  </div>
                   <FormField
                     control={form.control}
                     name='AlipayPayeeName'
@@ -1369,6 +1668,99 @@ export function PaymentSettingsSection({
                     )}
                   />
                 </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent
+              value='usdt-manual'
+              className={paymentTabContentClassName}
+            >
+              <div className='space-y-6'>
+                <h3 className='text-lg font-medium'>
+                  {t('USDT wallet transfer')}
+                </h3>
+                <Button
+                  type='button'
+                  variant='outline'
+                  onClick={() => {
+                    form.setValue('USDTNetwork', 'TRC20', {
+                      shouldDirty: true,
+                    })
+                    form.setValue(
+                      'USDTAddress',
+                      'TT1FCWG4PKGzDXE17LQBRWASiTFiQVTFwp',
+                      { shouldDirty: true }
+                    )
+                  }}
+                >
+                  {t('Use provided TRC20 address')}
+                </Button>
+                <p className='text-muted-foreground text-sm'>
+                  {t(
+                    'Creates pending orders. An administrator verifies the network, transaction and amount before crediting the balance.'
+                  )}
+                </p>
+                <FormField
+                  control={form.control}
+                  name='USDTManualEnabled'
+                  render={({ field }) => (
+                    <SettingsSwitchItem>
+                      <SettingsSwitchContent>
+                        <FormLabel>{t('Enable USDT transfers')}</FormLabel>
+                      </SettingsSwitchContent>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </SettingsSwitchItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name='USDTNetwork'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Network')}</FormLabel>
+                      <FormControl>
+                        <Input placeholder='TRC20 / ERC20' {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name='USDTAddress'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Receiving address')}</FormLabel>
+                      <FormControl>
+                        <Input placeholder='' {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name='USDTExchangeRate'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Local currency per USDT')}</FormLabel>
+                      <FormControl>
+                        <Input placeholder='' {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <p className='text-muted-foreground text-sm'>
+                  {t(
+                    'Use TRC20 or ERC20 and the matching public address. Set the exchange rate explicitly; it is not fetched automatically. Never enter a private key or recovery phrase.'
+                  )}
+                </p>
               </div>
             </TabsContent>
 

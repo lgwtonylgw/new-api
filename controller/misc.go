@@ -232,7 +232,11 @@ func SendEmailVerification(c *gin.Context) {
 		})
 		return
 	}
-	code := common.GenerateVerificationCode(6)
+	code, err := common.GenerateEmailVerificationCode()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	if err = common.RegisterVerificationCodeWithKey(email, code, common.EmailVerificationPurpose); err != nil {
 		common.ApiErrorT(c, "Unable to store the verification code. Please try again.")
 		return

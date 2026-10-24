@@ -60,6 +60,7 @@ interface RechargeFormCardProps {
   onSelectPreset: (preset: PresetAmount) => void
   topupAmount: number
   onTopupAmountChange: (amount: number) => void
+  paymentCurrency?: string
   paymentAmount: number
   calculating: boolean
   onPaymentMethodSelect: (method: PaymentMethod) => void
@@ -91,6 +92,7 @@ export function RechargeFormCard({
   topupAmount,
   onTopupAmountChange,
   paymentAmount,
+  paymentCurrency,
   calculating,
   onPaymentMethodSelect,
   paymentLoading,
@@ -316,7 +318,9 @@ export function RechargeFormCard({
                       <Skeleton className='h-5 w-16' />
                     ) : (
                       <span className='text-sm font-semibold'>
-                        {formatCurrency(paymentAmount)}
+                        {paymentCurrency === 'USDT'
+                          ? `${paymentAmount} USDT`
+                          : formatCurrency(paymentAmount)}
                       </span>
                     )}
                   </div>

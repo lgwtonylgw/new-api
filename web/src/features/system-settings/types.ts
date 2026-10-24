@@ -317,6 +317,15 @@ export type BillingSettings = {
   MinTopUp: number
   CustomCallbackAddress: string
   PayMethods: string
+  'payment_setting.usdt_manual_enabled': boolean
+  'payment_setting.usdt_network': string
+  'payment_setting.usdt_address': string
+  'payment_setting.usdt_exchange_rate': number
+  'payment_setting.epusdt_enabled': boolean
+  'payment_setting.epusdt_pay_address': string
+  'payment_setting.epusdt_merchant_id': string
+  'payment_setting.epusdt_secret_key': string
+  'payment_setting.epusdt_secret_configured': boolean
   'payment_setting.alipay_manual_enabled': boolean
   'payment_setting.alipay_qr_code_url': string
   'payment_setting.alipay_payee_name': string

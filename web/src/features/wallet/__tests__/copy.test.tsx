@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, fireEvent } from '@testing-library/react'
 import { createInstance } from 'i18next'
 import { I18nextProvider, initReactI18next } from 'react-i18next'
 import { beforeEach, expect, it, vi } from 'vitest'
@@ -26,7 +26,10 @@ import en from '@/i18n/locales/en.json'
 import zh from '@/i18n/locales/zh.json'
 import { api } from '@/lib/api'
 
+import { ManualAlipayDialog } from '../components/dialogs/manual-alipay-dialog'
+import { PaymentConfirmDialog } from '../components/dialogs/payment-confirm-dialog'
 import { RechargeFormCard } from '../components/recharge-form-card'
+import { requestPaymentAmount } from '../hooks/use-payment'
 
 const i18n = createInstance()
 
@@ -125,3 +128,78 @@ it.each([
     expect(screen.getByPlaceholderText('Minimum 1')).toBeVisible()
   }
 )
+
+it('shows the USDT network, receiving address and exact amount without treating a close as payment completion', async () => {
+  const onOpenChange = vi.fn()
+  render(
+    <I18nextProvider i18n={i18n}>
+      <ManualAlipayDialog
+        order={{
+          trade_no: 'USDT-test-order',
+          money: 1.369864,
+          payment_method: 'usdt_manual',
+          network: 'TRC20',
+          address: 'TT1FCWG4PKGzDXE17LQBRWASiTFiQVTFwp',
+        }}
+        onOpenChange={onOpenChange}
+      />
+    </I18nextProvider>
+  )
+  expect(await screen.findByRole('dialog')).toBeVisible()
+  expect(screen.getByText('1.369864 USDT')).toBeVisible()
+  expect(screen.getByText('TRC20')).toBeVisible()
+  expect(screen.getByText('TT1FCWG4PKGzDXE17LQBRWASiTFiQVTFwp')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '完成' }))
+  expect(onOpenChange).toHaveBeenCalledWith(false)
+})
+
+it('displays a USDT quote in the payment confirmation and prevents confirming while it is loading', async () => {
+  const onConfirm = vi.fn()
+  const view = render(
+    <I18nextProvider i18n={i18n}>
+      <PaymentConfirmDialog
+        open
+        onOpenChange={vi.fn()}
+        onConfirm={onConfirm}
+        topupAmount={10}
+        paymentAmount={1.369864}
+        paymentMethod={{ name: 'USDT', type: 'usdt_manual' }}
+        calculating={false}
+        processing={false}
+      />
+    </I18nextProvider>
+  )
+  expect(await screen.findByText('1.369864 USDT')).toBeVisible()
+  view.rerender(
+    <I18nextProvider i18n={i18n}>
+      <PaymentConfirmDialog
+        open
+        onOpenChange={vi.fn()}
+        onConfirm={onConfirm}
+        topupAmount={10}
+        paymentAmount={1.369864}
+        paymentMethod={{ name: 'USDT', type: 'usdt_manual' }}
+        calculating
+        processing={false}
+      />
+    </I18nextProvider>
+  )
+  const confirm = screen.getByRole('button', {
+    name: i18n.t('Confirm Payment'),
+  })
+  expect(confirm).toBeDisabled()
+  fireEvent.click(confirm)
+  expect(onConfirm).not.toHaveBeenCalled()
+})
+
+it('requests the USDT quote with an explicit payment method rather than a fiat quote', async () => {
+  const post = vi
+    .spyOn(api, 'post')
+    .mockResolvedValue({ data: { message: 'success', data: '1.369864' } })
+  expect(await requestPaymentAmount(10, 'usdt_manual')).toBe(1.369864)
+  expect(post).toHaveBeenCalledWith(
+    '/api/user/amount',
+    { amount: 10, payment_method: 'usdt_manual' },
+    expect.any(Object)
+  )
+})

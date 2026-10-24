@@ -40,9 +40,12 @@ export type PaymentResponse = ApiResponse<Record<string, unknown>> & {
 }
 export type StripePaymentResponse = ApiResponse<{ pay_link: string }>
 export interface ManualAlipayOrder {
+  payment_method?: string
+  address?: string
+  network?: string
   trade_no: string
   money: number
-  qr_code_url: string
+  qr_code_url?: string
   payee_name?: string
 }
 export type ManualAlipayPaymentResponse = ApiResponse<ManualAlipayOrder>
@@ -216,6 +219,7 @@ export interface WaffoPancakePaymentRequest {
  * Amount calculation request
  */
 export interface AmountRequest {
+  payment_method?: string
   /** Topup amount to calculate */
   amount: number
 }

@@ -1,8 +1,13 @@
 package controller
 
 import (
+	"math"
+	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
@@ -96,7 +101,15 @@ func isEpayTopUpEnabled() bool {
 	if !isPaymentComplianceConfirmed() {
 		return false
 	}
-	return isEpayWebhookConfigured() && len(operation_setting.PayMethods) > 0
+	if !isEpayWebhookConfigured() {
+		return false
+	}
+	for _, method := range operation_setting.PayMethods {
+		if method["type"] != model.PaymentMethodEpusdtTRC20 {
+			return true
+		}
+	}
+	return false
 }
 
 func isEpayWebhookConfigured() bool {
@@ -109,9 +122,33 @@ func isEpayWebhookEnabled() bool {
 	return isEpayTopUpEnabled()
 }
 
+func isEpusdtWebhookConfigured() bool {
+	s := operation_setting.GetPaymentSetting()
+	pid, err := strconv.ParseInt(strings.TrimSpace(s.EpusdtMerchantID), 10, 64)
+	if err != nil || pid <= 0 || strconv.FormatInt(pid, 10) != strings.TrimSpace(s.EpusdtMerchantID) || strings.TrimSpace(s.EpusdtSecretKey) == "" {
+		return false
+	}
+	endpoint, err := url.Parse(strings.TrimSpace(s.EpusdtPayAddress))
+	return err == nil && endpoint.Scheme == "https" && endpoint.Hostname() != "" &&
+		endpoint.User == nil && endpoint.RawQuery == "" && endpoint.Fragment == "" &&
+		strings.TrimSuffix(endpoint.Path, "/") == "/payments/epay/v1/order/create-transaction"
+}
+
+func isEpusdtTopUpEnabled() bool {
+	return isPaymentComplianceConfirmed() && operation_setting.GetPaymentSetting().EpusdtEnabled && isEpusdtWebhookConfigured()
+}
+
 func isManualAlipayTopUpEnabled() bool {
 	settings := operation_setting.GetPaymentSetting()
 	return isPaymentComplianceConfirmed() &&
 		settings.AlipayManualEnabled &&
 		strings.HasPrefix(strings.TrimSpace(settings.AlipayQRCodeURL), "https://")
+}
+
+func isManualUSDTTopUpEnabled() bool {
+	s := operation_setting.GetPaymentSetting()
+	return isPaymentComplianceConfirmed() && s.USDTManualEnabled &&
+		s.USDTExchangeRate > 0 && !math.IsInf(s.USDTExchangeRate, 0) && !math.IsNaN(s.USDTExchangeRate) &&
+		((s.USDTNetwork == "TRC20" && regexp.MustCompile(`^T[1-9A-HJ-NP-Za-km-z]{33}$`).MatchString(strings.TrimSpace(s.USDTAddress))) ||
+			(s.USDTNetwork == "ERC20" && regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`).MatchString(strings.TrimSpace(s.USDTAddress))))
 }

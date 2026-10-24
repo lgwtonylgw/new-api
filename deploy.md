@@ -166,9 +166,11 @@ umask 077
 MYSQL_ROOT_PASSWORD="$(openssl rand -hex 24)"
 REDIS_PASSWORD="$(openssl rand -hex 24)"
 SESSION_SECRET="$(openssl rand -hex 32)"
-printf 'MYSQL_ROOT_PASSWORD=%s\nREDIS_PASSWORD=%s\nSESSION_SECRET=%s\n' \
-  "$MYSQL_ROOT_PASSWORD" "$REDIS_PASSWORD" "$SESSION_SECRET" > .env
-unset MYSQL_ROOT_PASSWORD REDIS_PASSWORD SESSION_SECRET
+read -rp "请输入站点 HTTPS Origin（例如 https://tokenaigate.com）: " SESSION_COOKIE_TRUSTED_URL
+printf 'MYSQL_ROOT_PASSWORD=%s\nREDIS_PASSWORD=%s\nSESSION_SECRET=%s\nSESSION_COOKIE_TRUSTED_URL=%s\nDEFAULT_LANGUAGE=zh-CN\n' \
+  "$MYSQL_ROOT_PASSWORD" "$REDIS_PASSWORD" "$SESSION_SECRET" \
+  "$SESSION_COOKIE_TRUSTED_URL" > .env
+unset MYSQL_ROOT_PASSWORD REDIS_PASSWORD SESSION_SECRET SESSION_COOKIE_TRUSTED_URL
 chmod 600 .env
 
 docker compose config --quiet
@@ -180,6 +182,34 @@ curl --retry 10 --retry-connrefused --retry-delay 2 \
 ```
 
 `.env` 只保留在服务器，已被 Git 忽略。不要把真实密码发送到聊天、截图或提交到开源仓库。
+
+### 3.1 服务器 `.env` 完整格式
+
+生产服务器的 `/data/new-api/.env` 至少包含以下配置：
+
+```dotenv
+MYSQL_ROOT_PASSWORD=<随机的 MySQL 强密码>
+REDIS_PASSWORD=<随机的 Redis 强密码>
+SESSION_SECRET=<用 openssl rand -hex 32 生成的固定密钥>
+SESSION_COOKIE_TRUSTED_URL=https://your-domain.example
+DEFAULT_LANGUAGE=zh-CN
+```
+
+- `MYSQL_ROOT_PASSWORD` 和 `REDIS_PASSWORD` 必须与 Compose 中的数据库、应用配置保持一致。
+- `SESSION_SECRET` 只生成一次并长期保留；多节点部署时每个节点必须使用同一值。更换它会让现有用户重新登录。
+- `SESSION_COOKIE_TRUSTED_URL` 填写浏览器实际访问的完整 HTTPS Origin，不带路径和末尾斜杠。更换域名时只修改这一项，多个域名用英文逗号分隔，例如 `https://example.com,https://admin.example.com`。
+- 生产 Compose 已启用 `SESSION_COOKIE_SECURE=true`，因此 `SESSION_COOKIE_TRUSTED_URL` 不能留空。
+- `DEFAULT_LANGUAGE=zh-CN` 让新访客、默认邮件和服务端提示使用简体中文。
+
+修改后先验证变量和 Compose 配置：
+
+```bash
+cd /data/new-api
+chmod 600 .env
+docker compose config --quiet
+```
+
+`docker compose config --quiet` 没有输出代表配置解析通过。如果提示某个 required variable 缺失，应在 `.env` 中补齐对应项后再构建镜像。
 
 应用正常后，依次完成第五节的 Nginx 和第六节的 HTTPS、Cloudflare 配置，然后立即通过 `https://tokenaigate.com/setup` 创建管理员。
 
@@ -428,20 +458,39 @@ curl -fsS https://tokenaigate.com/api/status
 
 先在 [Resend Domains](https://resend.com/domains) 添加邮件域名并完成 SPF、DKIM 验证，再创建仅供本服务使用的 API Key。建议使用独立发件地址，例如 `no-reply@tokenaigate.com`。
 
-进入“系统设置 → 集成设置 → SMTP 邮件”，填写：
+进入“系统设置 → 运维 → SMTP 邮箱”，填写：
 
 | 配置项 | 值 |
 | --- | --- |
 | SMTP Host | `smtp.resend.com` |
-| Port | `465` |
-| SMTP encryption | `SSL/TLS` |
+| Port | `587` |
+| SMTP encryption | `STARTTLS` |
 | Username | `resend` |
 | From Address | 已验证域名下的地址，例如 `no-reply@tokenaigate.com` |
 | Password / Access Token | Resend API Key |
 | Skip SMTP TLS certificate verification | 关闭 |
 | Force AUTH LOGIN | 关闭 |
 
-也可以使用端口 `587`，但必须把加密方式改为 `STARTTLS`；不要使用“无加密”。Resend 当前 SMTP 参数以其[官方 SMTP 文档](https://resend.com/docs/send-with-smtp)为准。
+如果云服务商限制常用邮件端口，可将端口改为 Resend 支持的 `2587`，加密方式仍使用 `STARTTLS`。`465` 和 `2465` 则必须搭配 `SSL/TLS`。不要使用“无加密”。Resend 当前 SMTP 参数以其[官方 SMTP 文档](https://resend.com/docs/send-with-smtp)为准。
+
+如页面提示 `Unable to connect to SMTP server`，先在服务器上检查 DNS、TCP 和 STARTTLS：
+
+```bash
+getent ahosts smtp.resend.com
+timeout 15 openssl s_client \
+  -starttls smtp \
+  -connect smtp.resend.com:587 \
+  -servername smtp.resend.com \
+  -brief </dev/null
+docker compose logs --since=10m new-api | grep -iE 'smtp|timeout|dial|tls|auth'
+```
+
+- `openssl` 显示 TLS 协议和证书信息，说明服务器到 Resend 的网络正常，应继续检查 API Key、发件域名和应用日志。
+- `587` 连接超时时，改用 `2587 + STARTTLS` 后重试。
+- `587` 和 `2587` 均超时时，联系云服务商解除出站 SMTP 限制，并检查服务器防火墙、安全组和出站 ACL。
+- 不要通过开启“跳过 SMTP TLS 证书验证”解决连接超时；该选项无法解决网络不通，反而会降低连接安全性。
+
+如 Resend 返回 `550 ... domain is not verified`，说明 SMTP 已经连接成功，但“发件地址”使用的域名尚未通过 Resend 验证。以 `noreply@mail.tokenaigate.com` 为例，应在 Resend Domains 中添加并验证 `mail.tokenaigate.com`，然后在该域名的 DNS 服务商中逐项添加 Resend 页面给出的 DKIM、SPF、MX 等记录。记录名称、类型、内容和 MX 优先级必须与 Resend 页面一致；使用 Cloudflare 时，相关记录保持“仅 DNS”。等待 Resend 显示 `Verified` 后再发送验证码。不要只验证其他域名后继续使用未验证的 `mail.tokenaigate.com` 发信。
 
 保存后进入“认证设置 → 基础认证”：
 
@@ -598,21 +647,94 @@ Cloudflare Turnstile 开启后，除密码登录、注册和邮件验证码外�
 
 该方式不使用支付宝 Cookie、Token、抓包接口或个人账单轮询。收款码是否可用于经营性收款及相应限额、实名、税务和风控要求，以支付宝规则和经营所在地法律为准。订单长期未到账时保持待支付或按运营流程作废，不得为了对账方便复用订单号。
 
-#### USDT（GM Pay / Epay 兼容接口）
+#### AliMPay 收银台（自动核对到账）
 
-GM Pay 作为独立服务部署并使用独立域名，例如 `pay.tokenaigate.com`。固定经过验收的版本，不直接跟随 `latest`；管理后台不得暴露给公网。初期建议只启用一种网络，例如 USDT-TRC20，且使用专门的干净收款地址，不与个人转账或其他业务共用。
+`workspace/AliMPay` 是独立的收款服务，提供易支付 V1 接口。它需要单独运行 Bun/Compose 服务及持久化目录，由 Nginx 配置独立 HTTPS 域名；不要把它的管理后台或 SQLite 数据文件并入本项目。先按其 `README.md` 完成首次设置、支付宝应用密钥、账务明细查询权限、经营码上传和连接测试，取得 V1 商户 ID 与 V1 密钥。
 
-在 GM Pay 中创建 Epay 兼容商户后，回到 new-api 的 `Epay` 页签填写：
+进入本站“系统设置 → 计费与支付 → 支付网关”：
+
+1. 在“支付方式”点“使用 AliMPay（仅支付宝）”，确保 `PayMethods` 只包含 `type=alipay`。若此前启用了人工支付宝收款码，可按需要关闭，避免钱包出现两个同名入口。
+2. 在“Epay”页签填写 AliMPay 的 **HTTPS 根地址**（不带 `/submit.php`）、V1 商户 ID 和 V1 密钥。回调地址只填本站 HTTPS 根地址；不填时采用服务端的站点地址。保存全部设置。
+3. AliMPay 的公网回调地址须能访问本站 `/api/user/epay/notify`。AliMPay 默认拒绝私网回调，因此本地 `localhost` 回调不适用于生产联调。
+4. 钱包选择“支付宝”下单后，会跳转 AliMPay 收银台。它按实际账务查询确认支付，并向本站发送签名通知。本站核对商户号、原始订单金额和待支付状态后，才给余额入账；同一订单重复通知不会重复加款。
+
+AliMPay 经营码会对用户实付金额增加 0.01–0.99 元用于匹配，本站核对的是下单时的原始金额。上线前用小额真实交易验证收银台、实际到账、回调和余额，并确认支付宝应用有账务查询权限。仅部署代码不会自动启用该通道，仍需在两个后台分别完成密钥和收款配置。
+
+#### USDT 钱包转账（人工核验）
+
+进入“系统设置 → 计费与支付 → 支付网关 → USDT”：
+
+1. 填写网络 `TRC20` 和对应的公开收款地址，或者点击“使用提供的 TRC20 地址”。不要填写私钥或助记词。
+2. 填写“每 1 USDT 对应的支付币种金额”，币种与常规充值单价保持一致。该比例由管理员确定，不会自动更新。例如常规支付金额为 70、比例为 7 时，应付为 10 USDT。
+3. 开启“启用 USDT 转账”并保存所有设置，返回钱包后会显示 USDT 支付方式。
+4. 下单后显示指定网络、收款地址二维码、最多六位小数的准确应付金额和订单号。创建订单不会增加余额，关闭弹框也不代表付款成功。
+5. 管理员核对链上实际到账、网络、金额和交易未被重复使用后，在“钱包 → 订单历史”按订单号完成订单。系统对同一订单的重复确认只入账一次；交易与订单的对应关系由管理员核验，不进行自动链上匹配。
+
+支付宝页签可以点击“使用已上传的支付宝收款码”，生成当前站点的 `/alipay-receive.png` HTTPS 地址。确认图片可访问后启用并保存。
+
+#### USDT 自动确认（独立部署 epusdt / GM Pay）
+
+`workspace/epusdt` 包含独立的链上监听、支付订单、数据库和通知队列，应作为独立服务部署并使用独立 HTTPS 域名，例如 `usdt.tokenaigate.com`。固定经过验收的版本，不直接跟随 `latest`；只开放收银台和必要接口，限制管理后台访问。初期建议只启用一种网络，例如 USDT-TRC20，且使用专门的收款地址，不与个人转账或其他业务共用。部署时持久化 `.env`、主数据库及运行目录；仓库自带的 `docker-compose.yaml` 只挂载了 `./env`，不能直接视为完整的持久化生产配置。
+
+在 epusdt 中创建数字 PID 的 EPay 兼容商户、启用 USDT/TRON 钱包与网络后，回到 new-api 的独立 `epusdt` 页签填写：
 
 | 配置项 | 值 |
 | --- | --- |
-| Epay endpoint | GM Pay 的 HTTPS 根地址 |
-| Callback address | `https://tokenaigate.com` |
-| Epay merchant ID | GM Pay 分配的商户 ID |
-| Epay secret key | GM Pay 分配的签名密钥 |
-| Payment methods | 按 GM Pay 当前文档填写其 USDT 支付类型，不凭经验猜测 |
+| epusdt EPay endpoint | `https://usdt.example.com/payments/epay/v1/order/create-transaction`（本站自动追加 `/submit.php`） |
+| epusdt merchant PID | epusdt 分配的数字 PID |
+| epusdt EPay secret key | 对应 PID 的签名密钥，保存在本站服务端配置，不要填入收款私钥 |
+| epusdt enable | 配置完成后先在受控测试环境开启并验收，再在生产开启 |
 
-GM Pay 的通知目标应最终指向 `https://tokenaigate.com/api/user/epay/notify`。上线前测试正确金额、少付、多付、错链、超时、重复通知、伪造签名、区块回滚及网关不可用；只有验签成功且状态为成功的回调能够入账。钱包助记词和私钥只保存在钱包安全环境中，不进入 new-api 配置。
+本站 `Epay` 页签继续专供 AliMPay；它的回调是 `/api/user/epay/notify`。epusdt 使用 `/api/user/epusdt/notify`。两边订单在本站分别记录 `epay` 和 `epusdt` 提供商；回调签名使用各自密钥，核对数字 PID、支付类型、原始法币金额和待支付状态，再执行一次性入账。`PayMethods` 中无需填写 `usdt.tron`，启用独立 epusdt 配置后钱包自动出现“USDT-TRC20”。原来的“USDT 转账（人工核验）”可关闭，避免两个 USDT 入口。
+
+epusdt 的法币默认币种设为 **CNY**，与本站 `Price` 算出的收款金额一致。确保 epusdt 已启用 `USDT/TRON` 收款资产；该站点的 EPay `type=usdt.tron` 才会直接生成对应的链上订单。公开收款地址在 epusdt 钱包后台配置，不填进本站的 EPay 密钥字段。链上监听所需节点/API 凭据也只保存在 epusdt。
+
+epusdt 仓库提供 `compose.production.yaml` 示例，固定使用本地源码构建镜像、仅在服务器回环地址开放 8000 端口，并持久化 `./data`。从经过验收的 Git 提交部署，不直接拉取 `latest` 镜像。在 `workspace/epusdt` 下按其 `src/.env.example` 创建未入库的 `env` 文件，至少设置：
+
+```dotenv
+app_uri=https://usdt.example.com
+http_listen=:8000
+db_type=sqlite
+sqlite_database_filename=/app/data/epusdt.db
+runtime_root_path=/app/data/runtime
+log_save_path=/app/data/logs
+api_auth_token=<单独生成的高强度随机值>
+tron_grid_api_key=<实际使用的链上查询凭据>
+```
+
+为 epusdt 准备独立的 HTTPS 域名和反向代理，代理至 `127.0.0.1:8000`；AliMPay 使用另一域名代理至 `127.0.0.1:3001`（其 Compose 默认宿主机端口，可通过 `ALIMPAY_HOST_PORT` 修改；容器内部仍为 3000）。两套服务以及本站分别保存自己的配置、密钥、数据库和日志，分别备份与监控。验证 Nginx 配置后再重载；不要将 epusdt 的管理后台公开给未授权访问者。epusdt 启动示例：
+
+```sh
+cd /data/epusdt
+mkdir -p data
+docker compose -f compose.production.yaml build --pull
+docker compose -f compose.production.yaml up -d
+docker compose -f compose.production.yaml ps
+```
+
+epusdt 的 Nginx 站点示例（证书路径改成实际位置，AliMPay 的站点配置见其 README）：
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name usdt.example.com;
+    ssl_certificate /etc/letsencrypt/live/usdt.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/usdt.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 30s;
+    }
+}
+```
+
+两个独立站点均应使用 TLS，收银台公开可访问；管理入口额外限制来源并使用强认证。部署或升级前备份 AliMPay 的 `data/`、epusdt 的 `data/` 与两个服务的配置，并保留回滚用的镜像/源码版本。对 epusdt 的 SQLite 文件做一致性备份，避免在写入时直接复制数据库文件。
+
+上线前各做一笔小额真实支付：确认 AliMPay/epusdt 收银台金额、回调地址、实际到账、订单状态与本站余额一致；再分别测试金额不符、错误商户号、错误签名、重复通知和另一网关的订单号，均不得错误入账。USDT 还需核验链网络、确认数、超时和区块回滚处理；不要凭用户截图手动确认。测试通过后再面向普通用户启用两个通道。钱包助记词、私钥和 API 密钥不可写进文档或 Git。
 
 #### Stripe Checkout
 

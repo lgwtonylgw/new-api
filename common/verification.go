@@ -3,9 +3,11 @@ package common
 import (
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"fmt"
+	"math/big"
 	"strings"
 	"sync"
 	"time"
@@ -60,6 +62,15 @@ func GenerateVerificationCode(length int) string {
 		return code
 	}
 	return code[:length]
+}
+
+// GenerateEmailVerificationCode returns six digits, including any leading zeros.
+func GenerateEmailVerificationCode() (string, error) {
+	number, err := rand.Int(rand.Reader, big.NewInt(1_000_000))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%06d", number.Int64()), nil
 }
 
 func RegisterVerificationCodeWithKey(key string, code string, purpose string) error {

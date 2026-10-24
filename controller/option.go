@@ -141,6 +141,10 @@ func GetOptions(c *gin.Context) {
 		Key:   "CompletionRatioMeta",
 		Value: buildCompletionRatioMetaValue(optionValues),
 	})
+	options = append(options, &model.Option{
+		Key:   "payment_setting.epusdt_secret_configured",
+		Value: strconv.FormatBool(strings.TrimSpace(operation_setting.GetPaymentSetting().EpusdtSecretKey) != ""),
+	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -233,6 +237,11 @@ func UpdateOption(c *gin.Context) {
 		}
 	}
 	switch option.Key {
+	case "payment_setting.epusdt_enabled":
+		if option.Value == "true" && (!operation_setting.IsPaymentComplianceConfirmed() || !isEpusdtWebhookConfigured()) {
+			common.ApiErrorT(c, "Configure the epusdt gateway and confirm payment compliance before enabling it")
+			return
+		}
 	case "GitHubOAuthEnabled":
 		if option.Value == "true" && (strings.TrimSpace(common.GitHubClientId) == "" || strings.TrimSpace(common.GitHubClientSecret) == "") {
 			common.ApiErrorT(c, "Cannot enable {{provider}}. Enter the {{provider}} Client ID and Client Secret first.", map[string]any{"provider": "GitHub OAuth"})

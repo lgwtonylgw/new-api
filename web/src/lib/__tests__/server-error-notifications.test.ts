@@ -436,7 +436,7 @@ it('cancels an authenticated request that was already in flight at sign-out', as
     (config) =>
       new Promise((_resolve, reject) => {
         requestStarted?.()
-        config.signal?.addEventListener(
+        config.signal?.addEventListener?.(
           'abort',
           () => reject(new CanceledError('Request canceled', config)),
           { once: true }

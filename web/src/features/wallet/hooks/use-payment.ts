@@ -76,7 +76,13 @@ export async function requestPaymentAmount(
     calculator = calculators.waffoPancake
   }
 
-  const response = await calculator({ amount: topupAmount })
+  const response =
+    paymentType === PAYMENT_TYPES.USDT_MANUAL
+      ? await calculateAmount({
+          amount: topupAmount,
+          payment_method: PAYMENT_TYPES.USDT_MANUAL,
+        })
+      : await calculator({ amount: topupAmount })
   if (!isApiSuccess(response) || !response.data) {
     return 0
   }
@@ -139,10 +145,10 @@ export function usePayment() {
           return false
         }
 
-        if (isManualAlipay) {
+        if (isManualAlipay || paymentType === PAYMENT_TYPES.USDT_MANUAL) {
           const response = await requestManualAlipayPayment({
             amount,
-            payment_method: PAYMENT_TYPES.ALIPAY_MANUAL,
+            payment_method: paymentType,
           })
           if (!isApiSuccess(response)) {
             handleServerError(response, i18next.t('Payment request failed'))

@@ -32,20 +32,25 @@ const (
 	PaymentMethodWaffoPancake = "waffo_pancake"
 	PaymentMethodBalance      = "balance"
 	PaymentMethodAlipayManual = "alipay_manual"
+	PaymentMethodUSDTManual   = "usdt_manual"
+	PaymentMethodEpusdtTRC20  = "usdt.tron"
 )
 
 const (
 	PaymentProviderEpay         = "epay"
+	PaymentProviderEpusdt       = "epusdt"
 	PaymentProviderStripe       = "stripe"
 	PaymentProviderCreem        = "creem"
 	PaymentProviderWaffo        = "waffo"
 	PaymentProviderWaffoPancake = "waffo_pancake"
 	PaymentProviderBalance      = "balance"
 	PaymentProviderAlipayManual = "alipay_manual"
+	PaymentProviderUSDTManual   = "usdt_manual"
 )
 
 var (
 	ErrPaymentMethodMismatch = errors.New("payment method mismatch")
+	ErrPaymentAmountMismatch = errors.New("payment amount mismatch")
 	ErrTopUpNotFound         = errors.New("topup not found")
 	ErrTopUpStatusInvalid    = errors.New("topup status invalid")
 	// The quota errors reach the web console, so they carry message keys.
@@ -176,7 +181,11 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 // 在同一个事务内完成，因此同一订单的并发/重复回调（包括多实例部署下）最多充值一次。
 // alreadyDone=true 表示订单此前已完成，本次为幂等重复回调。
 // 进程内的 LockOrder 只是优化，正确性由本函数的数据库行锁保证。
-func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (alreadyDone bool, err error) {
+func RechargeEpay(tradeNo string, actualPaymentMethod string, paidMoney string, callerIp string) (alreadyDone bool, err error) {
+	return RechargeEpayForProvider(tradeNo, actualPaymentMethod, paidMoney, PaymentProviderEpay, callerIp)
+}
+
+func RechargeEpayForProvider(tradeNo string, actualPaymentMethod string, paidMoney string, provider string, callerIp string) (alreadyDone bool, err error) {
 	if tradeNo == "" {
 		return false, errors.New("payment order number not provided")
 	}
@@ -192,7 +201,10 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
 			return ErrTopUpNotFound
 		}
-		if topUp.PaymentProvider != PaymentProviderEpay {
+		if topUp.PaymentProvider != provider {
+			return ErrPaymentMethodMismatch
+		}
+		if provider == PaymentProviderEpusdt && (actualPaymentMethod != PaymentMethodEpusdtTRC20 || topUp.PaymentMethod != actualPaymentMethod) {
 			return ErrPaymentMethodMismatch
 		}
 		if topUp.Status == common.TopUpStatusSuccess {
@@ -201,6 +213,10 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		}
 		if topUp.Status != common.TopUpStatusPending {
 			return ErrTopUpStatusInvalid
+		}
+		paid, parseErr := decimal.NewFromString(paidMoney)
+		if parseErr != nil || paid.LessThanOrEqual(decimal.Zero) || !paid.Equal(decimal.NewFromFloat(topUp.Money).Round(2)) {
+			return ErrPaymentAmountMismatch
 		}
 		if actualPaymentMethod != "" && topUp.PaymentMethod != actualPaymentMethod {
 			topUp.PaymentMethod = actualPaymentMethod
@@ -220,18 +236,18 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
 	})
 	if err != nil {
-		if !errors.Is(err, ErrTopUpNotFound) && !errors.Is(err, ErrPaymentMethodMismatch) && !errors.Is(err, ErrTopUpStatusInvalid) {
-			common.SysError(common.LogText("epay topup failed: %s", err.Error()))
+		if !errors.Is(err, ErrTopUpNotFound) && !errors.Is(err, ErrPaymentMethodMismatch) && !errors.Is(err, ErrPaymentAmountMismatch) && !errors.Is(err, ErrTopUpStatusInvalid) {
+			common.SysError(common.LogText("%s topup failed: %s", provider, err.Error()))
 		}
 		return false, err
 	}
 	if alreadyDone {
 		return true, nil
 	}
-	syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, common.LogText("epay topup"))
+	syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, common.LogText("%s topup", provider))
 
-	common.SysLog(common.LogText("Epay top-up succeeded trade_no=%s user_id=%d quota_to_add=%d money=%.2f", topUp.TradeNo, topUp.UserId, quotaToAdd, topUp.Money))
-	RecordTopupLog(topUp.UserId, common.NewMessage("Online top-up succeeded, amount added: {{quota}}, payment amount: {{amount}}", map[string]any{"quota": logger.FormatQuota(quotaToAdd), "amount": fmt.Sprintf("%f", topUp.Money)}), callerIp, topUp.PaymentMethod, PaymentProviderEpay)
+	common.SysLog(common.LogText("%s top-up succeeded trade_no=%s user_id=%d quota_to_add=%d money=%.2f", provider, topUp.TradeNo, topUp.UserId, quotaToAdd, topUp.Money))
+	RecordTopupLog(topUp.UserId, common.NewMessage("Online top-up succeeded, amount added: {{quota}}, payment amount: {{amount}}", map[string]any{"quota": logger.FormatQuota(quotaToAdd), "amount": fmt.Sprintf("%f", topUp.Money)}), callerIp, topUp.PaymentMethod, provider)
 	return false, nil
 }
 

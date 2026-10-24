@@ -260,7 +260,9 @@ export function BillingHistoryDialog({
                             {t('Payment')}
                           </Label>
                           <div className='text-sm font-semibold text-red-600'>
-                            {formatNumber(record.money)}
+                            {record.payment_method === 'usdt_manual'
+                              ? `${record.money} USDT`
+                              : formatNumber(record.money)}
                           </div>
                         </div>
                       </div>
