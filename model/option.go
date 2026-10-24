@@ -132,9 +132,6 @@ func InitOptionMap() {
 	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(setting.DefaultUseAutoGroup)
 	common.OptionMap["MaxTokenAutoGroups"] = strconv.Itoa(setting.GetMaxTokenAutoGroups())
 	common.OptionMap["PayMethods"] = operation_setting.PayMethods2JsonString()
-	common.OptionMap["payment_setting.alipay_manual_enabled"] = strconv.FormatBool(operation_setting.GetPaymentSetting().AlipayManualEnabled)
-	common.OptionMap["payment_setting.alipay_qr_code_url"] = operation_setting.GetPaymentSetting().AlipayQRCodeURL
-	common.OptionMap["payment_setting.alipay_payee_name"] = operation_setting.GetPaymentSetting().AlipayPayeeName
 	common.OptionMap["GitHubClientId"] = ""
 	common.OptionMap["GitHubClientSecret"] = ""
 	common.OptionMap["TelegramBotToken"] = ""

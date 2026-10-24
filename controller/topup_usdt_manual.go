@@ -15,14 +15,13 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-func RequestManualTopUpPay(c *gin.Context) {
+func RequestManualUSDTTopUpPay(c *gin.Context) {
 	var req EpayRequest
-	if err := c.ShouldBindJSON(&req); err != nil || (req.PaymentMethod != model.PaymentMethodAlipayManual && req.PaymentMethod != model.PaymentMethodUSDTManual) {
+	if err := c.ShouldBindJSON(&req); err != nil || req.PaymentMethod != model.PaymentMethodUSDTManual {
 		paymentError(c, common.NewMessage("Invalid parameters"))
 		return
 	}
-	isUSDT := req.PaymentMethod == model.PaymentMethodUSDTManual
-	if (isUSDT && !isManualUSDTTopUpEnabled()) || (!isUSDT && !isManualAlipayTopUpEnabled()) {
+	if !isManualUSDTTopUpEnabled() {
 		paymentError(c, common.NewMessage("This payment method is not configured"))
 		return
 	}
@@ -40,29 +39,18 @@ func RequestManualTopUpPay(c *gin.Context) {
 		paymentError(c, common.NewMessage("Failed to get the user group"))
 		return
 	}
-	payMoney := getPayMoney(req.Amount, group)
-	if isUSDT {
-		payMoney = manualUSDTMoney(payMoney)
-	}
-	if payMoney <= 0 || (!isUSDT && payMoney < 0.01) {
+	payMoney := manualUSDTMoney(getPayMoney(req.Amount, group))
+	if payMoney <= 0 {
 		paymentError(c, common.NewMessage("Payment amount is too low"))
 		return
 	}
 
-	prefix := "ALI"
-	if isUSDT {
-		prefix = "USDT"
-	}
-	tradeNo := fmt.Sprintf("%s%d%s%d", prefix, userID, common.GetRandomString(6), time.Now().Unix())
+	tradeNo := fmt.Sprintf("USDT%d%s%d", userID, common.GetRandomString(6), time.Now().Unix())
 	storedAmount := req.Amount
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
 		storedAmount = decimal.NewFromInt(req.Amount).
 			Div(decimal.NewFromFloat(common.QuotaPerUnit)).
 			IntPart()
-	}
-	provider := model.PaymentProviderAlipayManual
-	if isUSDT {
-		provider = model.PaymentProviderUSDTManual
 	}
 	topUp := &model.TopUp{
 		UserId:          userID,
@@ -70,7 +58,7 @@ func RequestManualTopUpPay(c *gin.Context) {
 		Money:           payMoney,
 		TradeNo:         tradeNo,
 		PaymentMethod:   req.PaymentMethod,
-		PaymentProvider: provider,
+		PaymentProvider: model.PaymentProviderUSDTManual,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
@@ -82,22 +70,10 @@ func RequestManualTopUpPay(c *gin.Context) {
 
 	settings := operation_setting.GetPaymentSetting()
 	logger.LogInfo(c.Request.Context(), common.LogText("manual payment top-up order created user_id=%d trade_no=%s amount=%d money=%.2f", userID, tradeNo, req.Amount, payMoney))
-	if isUSDT {
-		c.JSON(http.StatusOK, gin.H{"message": "success", "data": gin.H{
-			"trade_no": tradeNo, "money": payMoney, "network": settings.USDTNetwork,
-			"address": strings.TrimSpace(settings.USDTAddress), "payment_method": req.PaymentMethod,
-		}})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"message": "success",
-		"data": gin.H{
-			"trade_no":    tradeNo,
-			"money":       payMoney,
-			"qr_code_url": strings.TrimSpace(settings.AlipayQRCodeURL),
-			"payee_name":  strings.TrimSpace(settings.AlipayPayeeName),
-		},
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "success", "data": gin.H{
+		"trade_no": tradeNo, "money": payMoney, "network": settings.USDTNetwork,
+		"address": strings.TrimSpace(settings.USDTAddress), "payment_method": req.PaymentMethod,
+	}})
 }
 
 // Round up to USDT's six decimal places so the displayed quote is sufficient.

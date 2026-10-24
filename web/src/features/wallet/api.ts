@@ -29,7 +29,6 @@ import type {
   AmountResponse,
   PaymentResponse,
   StripePaymentResponse,
-  ManualAlipayPaymentResponse,
   AffiliateCodeResponse,
   AffiliateTransferResponse,
   BillingHistoryResponse,
@@ -131,21 +130,6 @@ export async function requestStripePayment(
   const res = await api.post('/api/user/stripe/pay', request, {
     skipBusinessError: true,
   } as Record<string, unknown>)
-  return res.data
-}
-
-export async function requestManualAlipayPayment(
-  request: PaymentRequest
-): Promise<ManualAlipayPaymentResponse> {
-  const res = await api.post(
-    request.payment_method === 'usdt_manual'
-      ? '/api/user/usdt/manual/pay'
-      : '/api/user/alipay/manual/pay',
-    request,
-    {
-      skipBusinessError: true,
-    } as Record<string, unknown>
-  )
   return res.data
 }
 

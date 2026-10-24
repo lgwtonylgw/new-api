@@ -25,6 +25,8 @@ describe('Independent payment gateway settings', () => {
         'https://usdt.example.com/payments/epay/v1/order/create-transaction',
       'payment_setting.epusdt_merchant_id': '1000',
       'payment_setting.epusdt_secret_configured': true,
+      'payment_setting.alipay_manual_enabled': true,
+      'payment_setting.alipay_qr_code_url': 'https://example.com/old-qr.png',
     }
 
     render(
@@ -53,6 +55,8 @@ describe('Independent payment gateway settings', () => {
     ).toBeVisible()
 
     fireEvent.click(screen.getByRole('tab', { name: 'Epay' }))
+    expect(screen.queryByRole('tab', { name: 'Alipay QR' })).toBeNull()
+    expect(screen.queryByRole('tab', { name: 'USDT' })).toBeNull()
     expect(screen.getByRole('textbox', { name: 'Epay endpoint' })).toHaveValue(
       'https://alipay.example.com'
     )

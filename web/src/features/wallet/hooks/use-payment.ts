@@ -29,18 +29,16 @@ import {
   calculateWaffoPancakeAmount,
   requestPayment,
   requestStripePayment,
-  requestManualAlipayPayment,
   isApiSuccess,
 } from '../api'
 import { PAYMENT_TYPES } from '../constants'
 import {
   isStripePayment,
-  isManualAlipayPayment,
   isWaffoPayment,
   isWaffoPancakePayment,
   submitPaymentForm,
 } from '../lib'
-import type { AmountRequest, AmountResponse, ManualAlipayOrder } from '../types'
+import type { AmountRequest, AmountResponse } from '../types'
 
 // ============================================================================
 // Payment Hook
@@ -76,13 +74,7 @@ export async function requestPaymentAmount(
     calculator = calculators.waffoPancake
   }
 
-  const response =
-    paymentType === PAYMENT_TYPES.USDT_MANUAL
-      ? await calculateAmount({
-          amount: topupAmount,
-          payment_method: PAYMENT_TYPES.USDT_MANUAL,
-        })
-      : await calculator({ amount: topupAmount })
+  const response = await calculator({ amount: topupAmount })
   if (!isApiSuccess(response) || !response.data) {
     return 0
   }
@@ -94,8 +86,6 @@ export function usePayment() {
   const [amount, setAmount] = useState<number>(0)
   const [calculating, setCalculating] = useState(false)
   const [processing, setProcessing] = useState(false)
-  const [manualAlipayOrder, setManualAlipayOrder] =
-    useState<ManualAlipayOrder | null>(null)
 
   // Calculate payment amount
   const calculatePaymentAmount = useCallback(
@@ -125,7 +115,6 @@ export function usePayment() {
         setProcessing(true)
 
         const isStripe = isStripePayment(paymentType)
-        const isManualAlipay = isManualAlipayPayment(paymentType)
         const amount = Math.floor(topupAmount)
 
         if (isStripe) {
@@ -140,22 +129,6 @@ export function usePayment() {
           if (response.data?.pay_link) {
             window.open(response.data.pay_link, '_blank')
             toast.success(i18next.t('Redirecting to payment page...'))
-            return true
-          }
-          return false
-        }
-
-        if (isManualAlipay || paymentType === PAYMENT_TYPES.USDT_MANUAL) {
-          const response = await requestManualAlipayPayment({
-            amount,
-            payment_method: paymentType,
-          })
-          if (!isApiSuccess(response)) {
-            handleServerError(response, i18next.t('Payment request failed'))
-            return false
-          }
-          if (response.data) {
-            setManualAlipayOrder(response.data)
             return true
           }
           return false
@@ -196,7 +169,5 @@ export function usePayment() {
     calculatePaymentAmount,
     processPayment,
     setAmount,
-    manualAlipayOrder,
-    clearManualAlipayOrder: () => setManualAlipayOrder(null),
   }
 }

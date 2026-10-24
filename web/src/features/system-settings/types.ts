@@ -326,9 +326,6 @@ export type BillingSettings = {
   'payment_setting.epusdt_merchant_id': string
   'payment_setting.epusdt_secret_key': string
   'payment_setting.epusdt_secret_configured': boolean
-  'payment_setting.alipay_manual_enabled': boolean
-  'payment_setting.alipay_qr_code_url': string
-  'payment_setting.alipay_payee_name': string
   'payment_setting.amount_options': string
   'payment_setting.amount_discount': string
   'payment_setting.compliance_confirmed': boolean

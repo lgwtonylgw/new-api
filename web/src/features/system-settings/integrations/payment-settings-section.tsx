@@ -121,10 +121,6 @@ const paymentSchema = z.object({
       })
     }
   }),
-  USDTManualEnabled: z.boolean().default(false),
-  USDTNetwork: z.string().default(''),
-  USDTAddress: z.string().default(''),
-  USDTExchangeRate: z.coerce.number().finite().min(0).default(0),
   EpusdtEnabled: z.boolean().default(false),
   EpusdtPayAddress: z.string().refine((value) => {
     if (!value.trim()) return true
@@ -146,12 +142,6 @@ const paymentSchema = z.object({
   }, 'Provide a valid HTTPS gateway URL'),
   EpusdtMerchantID: z.string(),
   EpusdtSecretKey: z.string(),
-  AlipayManualEnabled: z.boolean(),
-  AlipayQRCodeURL: z.string().refine((value) => {
-    const trimmed = value.trim()
-    return !trimmed || trimmed.startsWith('https://')
-  }, 'Provide an HTTPS QR code image URL'),
-  AlipayPayeeName: z.string(),
   AmountOptions: z.string().superRefine((value, ctx) => {
     const error = getJsonError(value, (parsed) => Array.isArray(parsed))
     if (error) {
@@ -215,19 +205,8 @@ type PaymentFormValues = z.infer<typeof paymentSchema>
 type WaffoFormFieldValues = Omit<WaffoSettingsValues, 'WaffoPayMethods'>
 type PaymentBaseFormValues = Omit<
   PaymentFormValues,
-  | keyof WaffoFormFieldValues
-  | keyof WaffoPancakeSettingsValues
-  | 'USDTManualEnabled'
-  | 'USDTNetwork'
-  | 'USDTAddress'
-  | 'USDTExchangeRate'
-> &
-  Partial<
-    Pick<
-      PaymentFormValues,
-      'USDTManualEnabled' | 'USDTNetwork' | 'USDTAddress' | 'USDTExchangeRate'
-    >
-  >
+  keyof WaffoFormFieldValues | keyof WaffoPancakeSettingsValues
+>
 
 const CURRENT_COMPLIANCE_TERMS_VERSION = 'v1'
 const paymentTabContentClassName = 'mt-6 min-w-0'
@@ -272,10 +251,6 @@ export function PaymentSettingsSection({
   const updateOption = useUpdateOption()
   const initialFormValues = React.useMemo<PaymentFormValues>(
     () => ({
-      USDTManualEnabled: false,
-      USDTNetwork: '',
-      USDTAddress: '',
-      USDTExchangeRate: 0,
       ...defaultValues,
       ...waffoDefaultValues,
       ...waffoPancakeDefaultValues,
@@ -475,17 +450,10 @@ export function PaymentSettingsSection({
       MinTopUp: values.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(values.CustomCallbackAddress),
       PayMethods: values.PayMethods.trim(),
-      USDTManualEnabled: values.USDTManualEnabled ?? false,
-      USDTNetwork: values.USDTNetwork ?? '',
-      USDTAddress: values.USDTAddress ?? '',
-      USDTExchangeRate: values.USDTExchangeRate ?? 0,
       EpusdtEnabled: values.EpusdtEnabled ?? false,
       EpusdtPayAddress: removeTrailingSlash(values.EpusdtPayAddress),
       EpusdtMerchantID: values.EpusdtMerchantID.trim(),
       EpusdtSecretKey: values.EpusdtSecretKey.trim(),
-      AlipayManualEnabled: values.AlipayManualEnabled,
-      AlipayQRCodeURL: values.AlipayQRCodeURL.trim(),
-      AlipayPayeeName: values.AlipayPayeeName.trim(),
       AmountOptions: values.AmountOptions.trim(),
       AmountDiscount: values.AmountDiscount.trim(),
       StripeApiSecret: values.StripeApiSecret.trim(),
@@ -530,19 +498,12 @@ export function PaymentSettingsSection({
         initialRef.current.CustomCallbackAddress
       ),
       PayMethods: initialRef.current.PayMethods.trim(),
-      USDTManualEnabled: initialRef.current.USDTManualEnabled ?? false,
-      USDTNetwork: initialRef.current.USDTNetwork ?? '',
-      USDTAddress: initialRef.current.USDTAddress ?? '',
-      USDTExchangeRate: initialRef.current.USDTExchangeRate ?? 0,
       EpusdtEnabled: initialRef.current.EpusdtEnabled ?? false,
       EpusdtPayAddress: removeTrailingSlash(
         initialRef.current.EpusdtPayAddress
       ),
       EpusdtMerchantID: initialRef.current.EpusdtMerchantID.trim(),
       EpusdtSecretKey: initialRef.current.EpusdtSecretKey.trim(),
-      AlipayManualEnabled: initialRef.current.AlipayManualEnabled,
-      AlipayQRCodeURL: initialRef.current.AlipayQRCodeURL.trim(),
-      AlipayPayeeName: initialRef.current.AlipayPayeeName.trim(),
       AmountOptions: initialRef.current.AmountOptions.trim(),
       AmountDiscount: initialRef.current.AmountDiscount.trim(),
       StripeApiSecret: initialRef.current.StripeApiSecret.trim(),
@@ -580,28 +541,6 @@ export function PaymentSettingsSection({
       ),
     }
 
-    if (sanitized.USDTManualEnabled) {
-      const address = sanitized.USDTAddress.trim()
-      const network = sanitized.USDTNetwork.trim().toUpperCase()
-      const validAddress =
-        network === 'TRC20'
-          ? /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address)
-          : network === 'ERC20' && /^0x[0-9a-fA-F]{40}$/.test(address)
-      if (!validAddress) {
-        form.setError('USDTAddress', {
-          message: t('Enter a valid receiving address for TRC20 or ERC20'),
-        })
-        return
-      }
-      if (sanitized.USDTExchangeRate <= 0) {
-        form.setError('USDTExchangeRate', {
-          message: t('Set a positive exchange rate before enabling USDT'),
-        })
-        return
-      }
-      sanitized.USDTAddress = address
-      sanitized.USDTNetwork = network
-    }
     const updates: Array<{ key: string; value: string | number | boolean }> = []
 
     if (sanitized.EpusdtPayAddress !== initial.EpusdtPayAddress) {
@@ -664,49 +603,6 @@ export function PaymentSettingsSection({
       normalizeJsonForComparison(initial.PayMethods)
     ) {
       updates.push({ key: 'PayMethods', value: sanitized.PayMethods })
-    }
-
-    if (sanitized.USDTNetwork !== initial.USDTNetwork) {
-      updates.push({
-        key: 'payment_setting.usdt_network',
-        value: sanitized.USDTNetwork,
-      })
-    }
-    if (sanitized.USDTAddress !== initial.USDTAddress) {
-      updates.push({
-        key: 'payment_setting.usdt_address',
-        value: sanitized.USDTAddress,
-      })
-    }
-    if (sanitized.USDTExchangeRate !== initial.USDTExchangeRate) {
-      updates.push({
-        key: 'payment_setting.usdt_exchange_rate',
-        value: sanitized.USDTExchangeRate,
-      })
-    }
-    if (sanitized.USDTManualEnabled !== initial.USDTManualEnabled) {
-      updates.push({
-        key: 'payment_setting.usdt_manual_enabled',
-        value: sanitized.USDTManualEnabled,
-      })
-    }
-    if (sanitized.AlipayManualEnabled !== initial.AlipayManualEnabled) {
-      updates.push({
-        key: 'payment_setting.alipay_manual_enabled',
-        value: sanitized.AlipayManualEnabled,
-      })
-    }
-    if (sanitized.AlipayQRCodeURL !== initial.AlipayQRCodeURL) {
-      updates.push({
-        key: 'payment_setting.alipay_qr_code_url',
-        value: sanitized.AlipayQRCodeURL,
-      })
-    }
-    if (sanitized.AlipayPayeeName !== initial.AlipayPayeeName) {
-      updates.push({
-        key: 'payment_setting.alipay_payee_name',
-        value: sanitized.AlipayPayeeName,
-      })
     }
 
     if (
@@ -1065,14 +961,10 @@ export function PaymentSettingsSection({
           />
           <Tabs defaultValue='general' className='min-w-0'>
             <div className='overflow-x-auto pb-1'>
-              <TabsList className='grid min-w-[64rem] grid-cols-9'>
+              <TabsList className='grid min-w-[49rem] grid-cols-7'>
                 <TabsTrigger value='general'>{t('General')}</TabsTrigger>
                 <TabsTrigger value='epay'>Epay</TabsTrigger>
                 <TabsTrigger value='epusdt'>epusdt</TabsTrigger>
-                <TabsTrigger value='alipay-manual'>
-                  {t('Alipay QR')}
-                </TabsTrigger>
-                <TabsTrigger value='usdt-manual'>USDT</TabsTrigger>
                 <TabsTrigger value='stripe'>{t('Stripe')}</TabsTrigger>
                 <TabsTrigger value='creem'>Creem</TabsTrigger>
                 <TabsTrigger value='waffo-pancake'>Waffo Pancake</TabsTrigger>
@@ -1571,194 +1463,6 @@ export function PaymentSettingsSection({
                 <p className='text-muted-foreground text-sm'>
                   {t(
                     'Set epusdt default currency to CNY. Payment notification URL: /api/user/epusdt/notify. Configure the callback origin on the Epay tab.'
-                  )}
-                </p>
-              </div>
-            </TabsContent>
-
-            <TabsContent
-              value='alipay-manual'
-              className={paymentTabContentClassName}
-            >
-              <div className='space-y-6'>
-                <div>
-                  <h3 className='text-lg font-medium'>{t('Alipay QR')}</h3>
-                  <p className='text-muted-foreground text-sm'>
-                    {t(
-                      'Creates pending orders for manual receipt verification. This does not read or monitor an Alipay account.'
-                    )}
-                  </p>
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name='AlipayManualEnabled'
-                  render={({ field }) => (
-                    <SettingsSwitchItem>
-                      <SettingsSwitchContent>
-                        <FormLabel>{t('Enable Alipay QR')}</FormLabel>
-                        <FormDescription>
-                          {t(
-                            'Only enable after uploading a valid collection QR code'
-                          )}
-                        </FormDescription>
-                      </SettingsSwitchContent>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                    </SettingsSwitchItem>
-                  )}
-                />
-
-                <div className='grid gap-6 md:grid-cols-2'>
-                  <FormField
-                    control={form.control}
-                    name='AlipayQRCodeURL'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('QR code image URL')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder='https://static.example.com/alipay.png'
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {t(
-                            'Use a stable HTTPS image URL; never enter account cookies or tokens'
-                          )}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <div className='flex items-end'>
-                    <Button
-                      type='button'
-                      variant='outline'
-                      onClick={() =>
-                        form.setValue(
-                          'AlipayQRCodeURL',
-                          `${window.location.origin}/alipay-receive.png`,
-                          { shouldDirty: true }
-                        )
-                      }
-                    >
-                      {t('Use uploaded Alipay QR')}
-                    </Button>
-                  </div>
-                  <FormField
-                    control={form.control}
-                    name='AlipayPayeeName'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Payee display name')}</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormDescription>
-                          {t('Helps users verify the recipient before paying')}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent
-              value='usdt-manual'
-              className={paymentTabContentClassName}
-            >
-              <div className='space-y-6'>
-                <h3 className='text-lg font-medium'>
-                  {t('USDT wallet transfer')}
-                </h3>
-                <Button
-                  type='button'
-                  variant='outline'
-                  onClick={() => {
-                    form.setValue('USDTNetwork', 'TRC20', {
-                      shouldDirty: true,
-                    })
-                    form.setValue(
-                      'USDTAddress',
-                      'TT1FCWG4PKGzDXE17LQBRWASiTFiQVTFwp',
-                      { shouldDirty: true }
-                    )
-                  }}
-                >
-                  {t('Use provided TRC20 address')}
-                </Button>
-                <p className='text-muted-foreground text-sm'>
-                  {t(
-                    'Creates pending orders. An administrator verifies the network, transaction and amount before crediting the balance.'
-                  )}
-                </p>
-                <FormField
-                  control={form.control}
-                  name='USDTManualEnabled'
-                  render={({ field }) => (
-                    <SettingsSwitchItem>
-                      <SettingsSwitchContent>
-                        <FormLabel>{t('Enable USDT transfers')}</FormLabel>
-                      </SettingsSwitchContent>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                    </SettingsSwitchItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name='USDTNetwork'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Network')}</FormLabel>
-                      <FormControl>
-                        <Input placeholder='TRC20 / ERC20' {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name='USDTAddress'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Receiving address')}</FormLabel>
-                      <FormControl>
-                        <Input placeholder='' {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name='USDTExchangeRate'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Local currency per USDT')}</FormLabel>
-                      <FormControl>
-                        <Input placeholder='' {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <p className='text-muted-foreground text-sm'>
-                  {t(
-                    'Use TRC20 or ERC20 and the matching public address. Set the exchange rate explicitly; it is not fetched automatically. Never enter a private key or recovery phrase.'
                   )}
                 </p>
               </div>

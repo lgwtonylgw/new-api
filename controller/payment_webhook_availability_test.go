@@ -173,6 +173,21 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 
 	operation_setting.EpayKey = "epay_key"
 	require.True(t, isEpayWebhookEnabled())
+	operation_setting.PayMethods = append(operation_setting.PayMethods, map[string]string{"type": model.PaymentMethodAlipayManual})
+	operation_setting.PayMethods = append(operation_setting.PayMethods, map[string]string{"type": model.PaymentMethodUSDTManual})
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	GetTopUpInfo(ctx)
+	var topUpInfo struct {
+		Data struct {
+			PayMethods []map[string]string `json:"pay_methods"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &topUpInfo))
+	for _, method := range topUpInfo.Data.PayMethods {
+		assert.NotEqual(t, model.PaymentMethodAlipayManual, method["type"])
+		assert.NotEqual(t, model.PaymentMethodUSDTManual, method["type"])
+	}
 
 	operation_setting.PayMethods = nil
 	require.False(t, isEpayWebhookEnabled())
@@ -217,37 +232,6 @@ func TestEpusdtPaymentMethodAppearsOnlyWithIndependentConfiguration(t *testing.T
 	GetTopUpInfo(ctx)
 	require.NoError(t, common.Unmarshal(rec.Body.Bytes(), &response))
 	assert.Empty(t, response.Data.PayMethods)
-}
-
-func TestManualAlipayTopUpRequiresComplianceToggleAndHTTPSQRCode(t *testing.T) {
-	paymentSetting := operation_setting.GetPaymentSetting()
-	originalEnabled := paymentSetting.AlipayManualEnabled
-	originalQRCodeURL := paymentSetting.AlipayQRCodeURL
-	originalComplianceConfirmed := paymentSetting.ComplianceConfirmed
-	originalComplianceVersion := paymentSetting.ComplianceTermsVersion
-	t.Cleanup(func() {
-		paymentSetting.AlipayManualEnabled = originalEnabled
-		paymentSetting.AlipayQRCodeURL = originalQRCodeURL
-		paymentSetting.ComplianceConfirmed = originalComplianceConfirmed
-		paymentSetting.ComplianceTermsVersion = originalComplianceVersion
-	})
-
-	paymentSetting.AlipayManualEnabled = true
-	paymentSetting.AlipayQRCodeURL = "https://static.example.com/alipay.png"
-	paymentSetting.ComplianceConfirmed = false
-	paymentSetting.ComplianceTermsVersion = ""
-	require.False(t, isManualAlipayTopUpEnabled())
-
-	paymentSetting.ComplianceConfirmed = true
-	paymentSetting.ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
-	require.True(t, isManualAlipayTopUpEnabled())
-
-	paymentSetting.AlipayQRCodeURL = "http://static.example.com/alipay.png"
-	require.False(t, isManualAlipayTopUpEnabled())
-
-	paymentSetting.AlipayQRCodeURL = "https://static.example.com/alipay.png"
-	paymentSetting.AlipayManualEnabled = false
-	require.False(t, isManualAlipayTopUpEnabled())
 }
 
 func TestEpayCallbacksVerifyBeforeSettlement(t *testing.T) {

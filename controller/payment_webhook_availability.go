@@ -105,7 +105,7 @@ func isEpayTopUpEnabled() bool {
 		return false
 	}
 	for _, method := range operation_setting.PayMethods {
-		if method["type"] != model.PaymentMethodEpusdtTRC20 {
+		if method["type"] != model.PaymentMethodEpusdtTRC20 && method["type"] != model.PaymentMethodAlipayManual && method["type"] != model.PaymentMethodUSDTManual {
 			return true
 		}
 	}
@@ -136,13 +136,6 @@ func isEpusdtWebhookConfigured() bool {
 
 func isEpusdtTopUpEnabled() bool {
 	return isPaymentComplianceConfirmed() && operation_setting.GetPaymentSetting().EpusdtEnabled && isEpusdtWebhookConfigured()
-}
-
-func isManualAlipayTopUpEnabled() bool {
-	settings := operation_setting.GetPaymentSetting()
-	return isPaymentComplianceConfirmed() &&
-		settings.AlipayManualEnabled &&
-		strings.HasPrefix(strings.TrimSpace(settings.AlipayQRCodeURL), "https://")
 }
 
 func isManualUSDTTopUpEnabled() bool {

@@ -633,19 +633,7 @@ Cloudflare Turnstile 开启后，除密码登录、注册和邮件验证码外�
 
 ### 7.8 配置充值支付方式
 
-生产环境计划启用支付宝收款码、USDT 和 Stripe。所有通道都必须先完成“系统设置 → 账单设置 → 支付网关”中的合规确认；密钥、钱包私钥、助记词、支付宝 Cookie 或访问令牌不得写入 Git、本文档或聊天记录。
-
-#### 支付宝收款码（人工核验）
-
-进入支付网关的“支付宝收款码”页签：
-
-1. 把收款码图片放到自己控制的 HTTPS 静态地址，不要使用 `data:`、本地文件或包含鉴权参数的临时链接。
-2. 填写收款人显示名称，帮助付款人核对收款对象。
-3. 保存二维码地址后再开启该支付方式。
-4. 用户下单后系统只创建 `pending` 订单并显示二维码、准确金额和订单号，不会读取支付宝账单，也不会自动入账。
-5. 管理员在支付宝确认金额实际到账后，进入充值记录按订单号执行“完成订单”。不要根据用户截图单独补单。
-
-该方式不使用支付宝 Cookie、Token、抓包接口或个人账单轮询。收款码是否可用于经营性收款及相应限额、实名、税务和风控要求，以支付宝规则和经营所在地法律为准。订单长期未到账时保持待支付或按运营流程作废，不得为了对账方便复用订单号。
+生产环境计划启用 AliMPay 支付宝、USDT 和 Stripe。所有通道都必须先完成“系统设置 → 账单设置 → 支付网关”中的合规确认；密钥、钱包私钥、助记词、支付宝 Cookie 或访问令牌不得写入 Git、本文档或聊天记录。
 
 #### AliMPay 收银台（自动核对到账）
 
@@ -653,24 +641,12 @@ Cloudflare Turnstile 开启后，除密码登录、注册和邮件验证码外�
 
 进入本站“系统设置 → 计费与支付 → 支付网关”：
 
-1. 在“支付方式”点“使用 AliMPay（仅支付宝）”，确保 `PayMethods` 只包含 `type=alipay`。若此前启用了人工支付宝收款码，可按需要关闭，避免钱包出现两个同名入口。
+1. 在“支付方式”点“使用 AliMPay（仅支付宝）”，确保 `PayMethods` 只包含 `type=alipay`。
 2. 在“Epay”页签填写 AliMPay 的 **HTTPS 根地址**（不带 `/submit.php`）、V1 商户 ID 和 V1 密钥。回调地址只填本站 HTTPS 根地址；不填时采用服务端的站点地址。保存全部设置。
 3. AliMPay 的公网回调地址须能访问本站 `/api/user/epay/notify`。AliMPay 默认拒绝私网回调，因此本地 `localhost` 回调不适用于生产联调。
 4. 钱包选择“支付宝”下单后，会跳转 AliMPay 收银台。它按实际账务查询确认支付，并向本站发送签名通知。本站核对商户号、原始订单金额和待支付状态后，才给余额入账；同一订单重复通知不会重复加款。
 
 AliMPay 经营码会对用户实付金额增加 0.01–0.99 元用于匹配，本站核对的是下单时的原始金额。上线前用小额真实交易验证收银台、实际到账、回调和余额，并确认支付宝应用有账务查询权限。仅部署代码不会自动启用该通道，仍需在两个后台分别完成密钥和收款配置。
-
-#### USDT 钱包转账（人工核验）
-
-进入“系统设置 → 计费与支付 → 支付网关 → USDT”：
-
-1. 填写网络 `TRC20` 和对应的公开收款地址，或者点击“使用提供的 TRC20 地址”。不要填写私钥或助记词。
-2. 填写“每 1 USDT 对应的支付币种金额”，币种与常规充值单价保持一致。该比例由管理员确定，不会自动更新。例如常规支付金额为 70、比例为 7 时，应付为 10 USDT。
-3. 开启“启用 USDT 转账”并保存所有设置，返回钱包后会显示 USDT 支付方式。
-4. 下单后显示指定网络、收款地址二维码、最多六位小数的准确应付金额和订单号。创建订单不会增加余额，关闭弹框也不代表付款成功。
-5. 管理员核对链上实际到账、网络、金额和交易未被重复使用后，在“钱包 → 订单历史”按订单号完成订单。系统对同一订单的重复确认只入账一次；交易与订单的对应关系由管理员核验，不进行自动链上匹配。
-
-支付宝页签可以点击“使用已上传的支付宝收款码”，生成当前站点的 `/alipay-receive.png` HTTPS 地址。确认图片可访问后启用并保存。
 
 #### USDT 自动确认（独立部署 epusdt / GM Pay）
 
@@ -685,27 +661,32 @@ AliMPay 经营码会对用户实付金额增加 0.01–0.99 元用于匹配，�
 | epusdt EPay secret key | 对应 PID 的签名密钥，保存在本站服务端配置，不要填入收款私钥 |
 | epusdt enable | 配置完成后先在受控测试环境开启并验收，再在生产开启 |
 
-本站 `Epay` 页签继续专供 AliMPay；它的回调是 `/api/user/epay/notify`。epusdt 使用 `/api/user/epusdt/notify`。两边订单在本站分别记录 `epay` 和 `epusdt` 提供商；回调签名使用各自密钥，核对数字 PID、支付类型、原始法币金额和待支付状态，再执行一次性入账。`PayMethods` 中无需填写 `usdt.tron`，启用独立 epusdt 配置后钱包自动出现“USDT-TRC20”。原来的“USDT 转账（人工核验）”可关闭，避免两个 USDT 入口。
+本站 `Epay` 页签继续专供 AliMPay；它的回调是 `/api/user/epay/notify`。epusdt 使用 `/api/user/epusdt/notify`。两边订单在本站分别记录 `epay` 和 `epusdt` 提供商；回调签名使用各自密钥，核对数字 PID、支付类型、原始法币金额和待支付状态，再执行一次性入账。`PayMethods` 中无需填写 `usdt.tron`，启用独立 epusdt 配置后钱包自动出现“USDT-TRC20”。旧版“支付宝收款码”和“USDT 转账（人工核验）”配置入口已移除，历史订单仍可在订单记录中查看。
 
 epusdt 的法币默认币种设为 **CNY**，与本站 `Price` 算出的收款金额一致。确保 epusdt 已启用 `USDT/TRON` 收款资产；该站点的 EPay `type=usdt.tron` 才会直接生成对应的链上订单。公开收款地址在 epusdt 钱包后台配置，不填进本站的 EPay 密钥字段。链上监听所需节点/API 凭据也只保存在 epusdt。
 
-epusdt 仓库提供 `compose.production.yaml` 示例，固定使用本地源码构建镜像、仅在服务器回环地址开放 8000 端口，并持久化 `./data`。从经过验收的 Git 提交部署，不直接拉取 `latest` 镜像。在 `workspace/epusdt` 下按其 `src/.env.example` 创建未入库的 `env` 文件，至少设置：
+本地工作区的 `workspace/epusdt/compose.production.yaml` 示例固定使用本地源码构建镜像、仅在服务器回环地址开放 8000 端口，并持久化 `./data`；部署前需把此文件一同复制到服务器。从经过验收的 Git 提交部署，不直接拉取 `latest` 镜像。该 Compose 将项目根目录的 `.env` 只读挂载到 `/app/.env`，不能使用会写入 `.env` 的首次安装向导。先在宿主机复制根目录 `.env.example` 为未入库的 `.env`；模板已经设置 `install=false` 和持久化路径，复制后核对域名：
 
 ```dotenv
-app_uri=https://usdt.example.com
+app_uri=https://usdt.tokenaigate.com
 http_listen=:8000
 db_type=sqlite
 sqlite_database_filename=/app/data/epusdt.db
 runtime_root_path=/app/data/runtime
 log_save_path=/app/data/logs
-api_auth_token=<单独生成的高强度随机值>
-tron_grid_api_key=<实际使用的链上查询凭据>
+order_notice_max_retry=5
+install=false
 ```
+
+此版本通过后台管理 API Key、链上 RPC 节点、收款钱包和汇率；不要往 `.env` 加旧版的 `api_auth_token` 或 `tron_grid_api_key` 配置。首次启动会在容器日志中输出自动创建的管理员密码，立即妥善保存并登录修改。生产服务器上的 `.env` 应仅供管理员读取，`data/` 应保持可写和持久化。
 
 为 epusdt 准备独立的 HTTPS 域名和反向代理，代理至 `127.0.0.1:8000`；AliMPay 使用另一域名代理至 `127.0.0.1:3001`（其 Compose 默认宿主机端口，可通过 `ALIMPAY_HOST_PORT` 修改；容器内部仍为 3000）。两套服务以及本站分别保存自己的配置、密钥、数据库和日志，分别备份与监控。验证 Nginx 配置后再重载；不要将 epusdt 的管理后台公开给未授权访问者。epusdt 启动示例：
 
 ```sh
 cd /data/epusdt
+cp .env.example .env
+chmod 600 .env
+# 核对 .env 的 app_uri 指向实际 HTTPS 域名
 mkdir -p data
 docker compose -f compose.production.yaml build --pull
 docker compose -f compose.production.yaml up -d

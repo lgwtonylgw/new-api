@@ -202,7 +202,7 @@ func TestStripeCreditedQuotaIncludesGroupRatio(t *testing.T) {
 	assert.True(t, decimal.NewFromInt(500000).Equal(getStripeCreditedQuota(1, "free")))
 }
 
-func TestRequestManualTopUpPayCreatesPendingOrderWithoutCreditingBalance(t *testing.T) {
+func TestRequestManualUSDTTopUpPayCreatesPendingOrderWithoutCreditingBalance(t *testing.T) {
 	oldRedis := common.RedisEnabled
 	common.RedisEnabled = false
 	t.Cleanup(func() { common.RedisEnabled = oldRedis })
@@ -216,9 +216,6 @@ func TestRequestManualTopUpPayCreatesPendingOrderWithoutCreditingBalance(t *test
 	oldDisplayType := operation_setting.GetGeneralSetting().QuotaDisplayType
 	oldTopupGroupRatio := common.TopupGroupRatio2JSONString()
 	paymentSetting := operation_setting.GetPaymentSetting()
-	oldEnabled := paymentSetting.AlipayManualEnabled
-	oldQRCodeURL := paymentSetting.AlipayQRCodeURL
-	oldPayeeName := paymentSetting.AlipayPayeeName
 	oldComplianceConfirmed := paymentSetting.ComplianceConfirmed
 	oldComplianceVersion := paymentSetting.ComplianceTermsVersion
 
@@ -239,9 +236,6 @@ func TestRequestManualTopUpPayCreatesPendingOrderWithoutCreditingBalance(t *test
 	operation_setting.Price = 7.3
 	operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeUSD
 	require.NoError(t, common.UpdateTopupGroupRatioByJSONString(`{"default":1}`))
-	paymentSetting.AlipayManualEnabled = true
-	paymentSetting.AlipayQRCodeURL = "https://static.example.com/alipay.png"
-	paymentSetting.AlipayPayeeName = "Test Payee"
 	paymentSetting.ComplianceConfirmed = true
 	paymentSetting.ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
 
@@ -251,9 +245,6 @@ func TestRequestManualTopUpPayCreatesPendingOrderWithoutCreditingBalance(t *test
 		operation_setting.Price = oldPrice
 		operation_setting.GetGeneralSetting().QuotaDisplayType = oldDisplayType
 		require.NoError(t, common.UpdateTopupGroupRatioByJSONString(oldTopupGroupRatio))
-		paymentSetting.AlipayManualEnabled = oldEnabled
-		paymentSetting.AlipayQRCodeURL = oldQRCodeURL
-		paymentSetting.AlipayPayeeName = oldPayeeName
 		paymentSetting.ComplianceConfirmed = oldComplianceConfirmed
 		paymentSetting.ComplianceTermsVersion = oldComplianceVersion
 		sqlDB, dbErr := db.DB()
@@ -264,34 +255,11 @@ func TestRequestManualTopUpPayCreatesPendingOrderWithoutCreditingBalance(t *test
 
 	require.NoError(t, db.Create(&model.User{
 		Id:       99,
-		Username: "manual_alipay_user",
+		Username: "manual_usdt_user",
 		Group:    "default",
 		Quota:    100,
 		Status:   common.UserStatusEnabled,
 	}).Error)
-
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Set("id", 99)
-	ctx.Request = httptest.NewRequest(
-		http.MethodPost,
-		"/api/user/alipay/manual/pay",
-		strings.NewReader(`{"amount":10,"payment_method":"alipay_manual"}`),
-	)
-	ctx.Request.Header.Set("Content-Type", "application/json")
-
-	RequestManualTopUpPay(ctx)
-
-	require.Equal(t, http.StatusOK, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), `"message":"success"`)
-	assert.Contains(t, recorder.Body.String(), `"qr_code_url":"https://static.example.com/alipay.png"`)
-	assert.Contains(t, recorder.Body.String(), `"payee_name":"Test Payee"`)
-
-	var topUp model.TopUp
-	require.NoError(t, db.First(&topUp).Error)
-	assert.Equal(t, model.PaymentProviderAlipayManual, topUp.PaymentProvider)
-	assert.Equal(t, common.TopUpStatusPending, topUp.Status)
-	assert.Equal(t, float64(73), topUp.Money)
 
 	var user model.User
 	require.NoError(t, db.First(&user, 99).Error)
@@ -311,7 +279,7 @@ func TestRequestManualTopUpPayCreatesPendingOrderWithoutCreditingBalance(t *test
 		success      bool
 	}{
 		{"disabled", "usdt_manual", false, 10, false},
-		{"unknown method", "usdt", true, 10, false},
+		{"removed Alipay QR method", "alipay_manual", true, 10, false},
 		{"negative amount", "usdt_manual", true, -1, false},
 		{"valid USDT order", "usdt_manual", true, 10, true},
 	} {
@@ -324,7 +292,7 @@ func TestRequestManualTopUpPayCreatesPendingOrderWithoutCreditingBalance(t *test
 			require.NoError(t, marshalErr)
 			ctx.Request = httptest.NewRequest(http.MethodPost, "/api/user/usdt/manual/pay", strings.NewReader(string(body)))
 			ctx.Request.Header.Set("Content-Type", "application/json")
-			RequestManualTopUpPay(ctx)
+			RequestManualUSDTTopUpPay(ctx)
 			if !tc.success {
 				assert.NotContains(t, recorder.Body.String(), `"message":"success"`)
 				return

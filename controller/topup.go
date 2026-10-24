@@ -30,7 +30,7 @@ func GetTopUpInfo(c *gin.Context) {
 	payMethods := make([]map[string]string, 0, len(operation_setting.PayMethods)+1)
 	if complianceConfirmed && isEpayTopUpEnabled() {
 		for _, method := range operation_setting.PayMethods {
-			if method["type"] != model.PaymentMethodEpusdtTRC20 {
+			if method["type"] != model.PaymentMethodEpusdtTRC20 && method["type"] != model.PaymentMethodAlipayManual && method["type"] != model.PaymentMethodUSDTManual {
 				payMethods = append(payMethods, method)
 			}
 		}
@@ -105,7 +105,7 @@ func GetTopUpInfo(c *gin.Context) {
 	}
 
 	data := gin.H{
-		"enable_online_topup":              isEpayTopUpEnabled() || isEpusdtTopUpEnabled() || isManualAlipayTopUpEnabled() || isManualUSDTTopUpEnabled(),
+		"enable_online_topup":              isEpayTopUpEnabled() || isEpusdtTopUpEnabled(),
 		"enable_stripe_topup":              isStripeTopUpEnabled(),
 		"enable_creem_topup":               isCreemTopUpEnabled(),
 		"enable_waffo_topup":               enableWaffo,
@@ -113,7 +113,6 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_redemption":                complianceConfirmed,
 		"payment_compliance_confirmed":     complianceConfirmed,
 		"payment_compliance_terms_version": operation_setting.CurrentComplianceTermsVersion,
-		"enable_manual_alipay_topup":       isManualAlipayTopUpEnabled(),
 		"waffo_pay_methods": func() any {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()
@@ -129,18 +128,6 @@ func GetTopUpInfo(c *gin.Context) {
 		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
 		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
 		"topup_link":              common.TopUpLink,
-	}
-	if isManualAlipayTopUpEnabled() {
-		payMethods = append(payMethods, map[string]string{
-			"name": "支付宝",
-			"type": model.PaymentMethodAlipayManual,
-			"icon": "SiAlipay",
-		})
-		data["pay_methods"] = payMethods
-	}
-	if isManualUSDTTopUpEnabled() {
-		payMethods = append(payMethods, map[string]string{"name": "USDT", "type": model.PaymentMethodUSDTManual, "icon": "SiTether"})
-		data["pay_methods"] = payMethods
 	}
 	common.ApiSuccess(c, data)
 }
@@ -341,6 +328,10 @@ func RequestEpay(c *gin.Context) {
 	}
 	quotedMoney := decimal.NewFromFloat(payMoney).Round(2)
 
+	if req.PaymentMethod == model.PaymentMethodAlipayManual || req.PaymentMethod == model.PaymentMethodUSDTManual {
+		paymentError(c, common.NewMessage("Payment method does not exist"))
+		return
+	}
 	isEpusdt := req.PaymentMethod == model.PaymentMethodEpusdtTRC20
 	if (isEpusdt && !isEpusdtTopUpEnabled()) || (!isEpusdt && (!isEpayTopUpEnabled() || !operation_setting.ContainsPayMethod(req.PaymentMethod))) {
 		paymentError(c, common.NewMessage("Payment method does not exist"))
@@ -571,6 +562,10 @@ func RequestAmount(c *gin.Context) {
 		paymentError(c, common.NewMessage("Invalid parameters"))
 		return
 	}
+	if req.PaymentMethod == model.PaymentMethodAlipayManual || req.PaymentMethod == model.PaymentMethodUSDTManual {
+		paymentError(c, common.NewMessage("Payment method does not exist"))
+		return
+	}
 
 	if req.Amount < getMinTopup() {
 		paymentError(c, common.NewMessage("Top-up amount cannot be less than {{min}}", map[string]any{"min": getMinTopup()}))
@@ -586,19 +581,6 @@ func RequestAmount(c *gin.Context) {
 		return
 	}
 	payMoney := getPayMoney(req.Amount, group)
-	if req.PaymentMethod == model.PaymentMethodUSDTManual {
-		if !isManualUSDTTopUpEnabled() {
-			paymentError(c, common.NewMessage("This payment method is not configured"))
-			return
-		}
-		payMoney = manualUSDTMoney(payMoney)
-		if payMoney <= 0 {
-			paymentError(c, common.NewMessage("Payment amount is too low"))
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"message": "success", "data": strconv.FormatFloat(payMoney, 'f', 6, 64)})
-		return
-	}
 	if payMoney <= 0.01 {
 		paymentError(c, common.NewMessage("Payment amount is too low"))
 		return

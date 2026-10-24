@@ -26,7 +26,7 @@ import en from '@/i18n/locales/en.json'
 import zh from '@/i18n/locales/zh.json'
 import { api } from '@/lib/api'
 
-import { ManualAlipayDialog } from '../components/dialogs/manual-alipay-dialog'
+import { ManualUSDTDialog } from '../components/dialogs/manual-usdt-dialog'
 import { PaymentConfirmDialog } from '../components/dialogs/payment-confirm-dialog'
 import { RechargeFormCard } from '../components/recharge-form-card'
 import { requestPaymentAmount } from '../hooks/use-payment'
@@ -133,7 +133,7 @@ it('shows the USDT network, receiving address and exact amount without treating 
   const onOpenChange = vi.fn()
   render(
     <I18nextProvider i18n={i18n}>
-      <ManualAlipayDialog
+      <ManualUSDTDialog
         order={{
           trade_no: 'USDT-test-order',
           money: 1.369864,
@@ -192,14 +192,14 @@ it('displays a USDT quote in the payment confirmation and prevents confirming wh
   expect(onConfirm).not.toHaveBeenCalled()
 })
 
-it('requests the USDT quote with an explicit payment method rather than a fiat quote', async () => {
+it('requests a regular fiat quote for gateway payments', async () => {
   const post = vi
     .spyOn(api, 'post')
     .mockResolvedValue({ data: { message: 'success', data: '1.369864' } })
-  expect(await requestPaymentAmount(10, 'usdt_manual')).toBe(1.369864)
+  expect(await requestPaymentAmount(10, 'alipay')).toBe(1.369864)
   expect(post).toHaveBeenCalledWith(
     '/api/user/amount',
-    { amount: 10, payment_method: 'usdt_manual' },
+    { amount: 10 },
     expect.any(Object)
   )
 })
