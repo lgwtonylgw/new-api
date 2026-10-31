@@ -29,6 +29,20 @@ export function getCodexDoc(t: TFunction, root: string): DocArticle {
     description: t('Connect Codex CLI using a custom Responses provider.'),
     sections: [
       {
+        id: 'codex-platforms',
+        title: t('Choose your operating system'),
+        paragraphs: [
+          t(
+            'New to Codex? Follow the guide for your operating system from installation to your first request. The configuration reference below also applies to supported local IDE clients.'
+          ),
+        ],
+        links: [
+          { label: t('Codex on Windows'), article: 'codex-windows' },
+          { label: t('Codex on macOS'), article: 'codex-macos' },
+          { label: t('Codex on Linux and WSL'), article: 'codex-linux' },
+        ],
+      },
+      {
         id: 'codex-prepare',
         title: t('Prepare Codex connection details'),
         steps: [

@@ -9,4 +9,10 @@ docs
 .gocache
 /web/node_modules
 /web/dist
+/data
+/logs
+/.cache
+/.idea
+/.env
+/.env.*
 !THIRD-PARTY-LICENSES.md

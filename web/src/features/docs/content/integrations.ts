@@ -21,6 +21,7 @@ import type { TFunction } from 'i18next'
 import type { DocArticle } from '../types'
 import { getClaudeCodeDoc } from './claude-code'
 import { getCodexDoc } from './codex'
+import { getCodexPlatformDocs } from './codex-platforms'
 
 export function getIntegrationDocs(t: TFunction, root: string): DocArticle[] {
   const group = t('Integration guides')
@@ -111,6 +112,7 @@ export function getIntegrationDocs(t: TFunction, root: string): DocArticle[] {
       ],
     },
     getCodexDoc(t, root),
+    ...getCodexPlatformDocs(t, root),
     getClaudeCodeDoc(t, root),
   ]
 }
