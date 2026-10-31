@@ -177,7 +177,8 @@ export async function createOAuthAuthorization(
   intent: 'login' | 'bind' | 'verify',
   operation?: VerificationOperation,
   signal?: AbortSignal,
-  proofToken?: string
+  proofToken?: string,
+  nonMainlandChinaConfirmed?: boolean
 ): Promise<{ state: string; authorizationUrl?: string }> {
   const aff = intent === 'login' ? getAffiliateCode() : ''
   const res = await api.post(
@@ -186,6 +187,9 @@ export async function createOAuthAuthorization(
       provider,
       intent,
       aff: aff || undefined,
+      ...(intent === 'login' && nonMainlandChinaConfirmed
+        ? { non_mainland_china_confirmed: true }
+        : {}),
       scope: operation?.scope,
       ...(operation?.context ? { context: operation.context } : {}),
     },
@@ -226,9 +230,17 @@ export async function createOAuthFlow(
 }
 
 // WeChat login by authorization code
-export async function wechatLoginByCode(code: string): Promise<ApiResponse> {
+export async function wechatLoginByCode(
+  code: string,
+  nonMainlandChinaConfirmed?: boolean
+): Promise<ApiResponse> {
   const res = await api.get('/api/oauth/wechat', {
-    params: { code },
+    params: {
+      code,
+      ...(nonMainlandChinaConfirmed
+        ? { non_mainland_china_confirmed: true }
+        : {}),
+    },
   })
   return res.data
 }

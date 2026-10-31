@@ -234,6 +234,14 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	}
+	if option.Key == "ApiPublicAddress" {
+		address, err := system_setting.NormalizeAPIPublicAddress(option.Value.(string))
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		option.Value = address
+	}
 	if option.Key == "TaskPublicAddress" && option.Value.(string) != "" {
 		if err := service.ValidateTaskArtifactBaseURL(option.Value.(string)); err != nil {
 			common.ApiError(c, err)

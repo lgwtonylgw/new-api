@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/popover'
 import { useApiInfo } from '@/features/dashboard/hooks/use-status-data'
 import { useStatus } from '@/hooks/use-status'
+import { getApiPublicAddress } from '@/lib/api-public-address'
 
 import { useApiKeys } from './api-keys-provider'
 
@@ -46,19 +47,25 @@ export function ApiKeysPrimaryButtons() {
   const { setOpen } = useApiKeys()
   const { status, loading } = useStatus()
   const { items } = useApiInfo()
-  const serverAddress =
-    (typeof status?.server_address === 'string' &&
-      status.server_address.trim()) ||
-    ''
-  const addresses = items.length
-    ? items
-    : [
-        {
-          url: serverAddress || window.location.origin,
-          route: serverAddress ? t('Default API address') : t('Current domain'),
-          description: '',
-        },
-      ]
+  const serverAddress = getApiPublicAddress(status)
+  const hasConfiguredAddress = Boolean(
+    status?.api_public_address || status?.server_address
+  )
+  const defaultAddress = {
+    url: serverAddress,
+    route: hasConfiguredAddress
+      ? t('Default API address')
+      : t('Current domain'),
+    description: '',
+  }
+  const addresses = items.length ? [...items] : [defaultAddress]
+  if (
+    items.length &&
+    status?.api_public_address &&
+    !items.some((item) => item.url.replace(/\/+$/, '') === serverAddress)
+  ) {
+    addresses.unshift(defaultAddress)
+  }
 
   return (
     <div className='flex flex-wrap gap-2'>

@@ -156,7 +156,7 @@ func setupTelegramOAuthTest(t *testing.T) *telegramOAuthFixture {
 
 func (fixture *telegramOAuthFixture) authorization(t *testing.T, intent string, identity service.AuthIdentity, scope string, claims jwt.MapClaims) (string, string) {
 	t.Helper()
-	request, err := common.Marshal(oauthStateRequest{Provider: "telegram", Intent: intent, Scope: scope})
+	request, err := common.Marshal(oauthStateRequest{Provider: "telegram", Intent: intent, Scope: scope, NonMainlandChinaConfirmed: intent == "login"})
 	require.NoError(t, err)
 	proof := ""
 	if intent == "bind" {

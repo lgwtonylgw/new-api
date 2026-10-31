@@ -21,19 +21,21 @@ import (
 const oauthAuthFlowTTL = 10 * time.Minute
 
 type oauthStateRequest struct {
-	Provider string          `json:"provider"`
-	Intent   string          `json:"intent"`
-	Aff      string          `json:"aff,omitempty"`
-	Scope    string          `json:"scope,omitempty"`
-	Context  json.RawMessage `json:"context,omitempty"`
+	NonMainlandChinaConfirmed bool            `json:"non_mainland_china_confirmed"`
+	Provider                  string          `json:"provider"`
+	Intent                    string          `json:"intent"`
+	Aff                       string          `json:"aff,omitempty"`
+	Scope                     string          `json:"scope,omitempty"`
+	Context                   json.RawMessage `json:"context,omitempty"`
 }
 
 type oauthFlowPayload struct {
-	AffiliateCode   string                         `json:"affiliate_code,omitempty"`
-	Verification    *service.OAuthVerificationFlow `json:"verification,omitempty"`
-	Telegram        *oauth.TelegramOAuthFlow       `json:"telegram,omitempty"`
-	SessionIdentity *service.AuthIdentity          `json:"session_identity,omitempty"`
-	Authorization   *model.AuthFlowAuthorization   `json:"authorization,omitempty"`
+	NonMainlandChinaConfirmed bool                           `json:"non_mainland_china_confirmed,omitempty"`
+	AffiliateCode             string                         `json:"affiliate_code,omitempty"`
+	Verification              *service.OAuthVerificationFlow `json:"verification,omitempty"`
+	Telegram                  *oauth.TelegramOAuthFlow       `json:"telegram,omitempty"`
+	SessionIdentity           *service.AuthIdentity          `json:"session_identity,omitempty"`
+	Authorization             *model.AuthFlowAuthorization   `json:"authorization,omitempty"`
 }
 
 // providerParams returns the params of messages that name the OAuth provider.
@@ -61,7 +63,7 @@ func GenerateOAuthCode(c *gin.Context) {
 	}
 	userID := 0
 	sessionID := ""
-	flowPayload := oauthFlowPayload{AffiliateCode: request.Aff}
+	flowPayload := oauthFlowPayload{AffiliateCode: request.Aff, NonMainlandChinaConfirmed: request.NonMainlandChinaConfirmed}
 	bindingStarted := false
 	if request.Provider == "telegram" {
 		telegramFlow, err := oauth.NewTelegramOAuthFlow()
@@ -311,8 +313,12 @@ func handleOAuthLogin(c *gin.Context, provider oauth.Provider, oauthUser *oauth.
 		writeSecurityOperationError(c, err)
 		return
 	}
-	user, migration, err := findOrCreateOAuthUser(c, provider, oauthUser, token, payload.AffiliateCode)
+	user, migration, err := findOrCreateOAuthUser(c, provider, oauthUser, token, payload.AffiliateCode, payload.NonMainlandChinaConfirmed)
 	if err != nil {
+		if errors.Is(err, errRegistrationRegionConfirmationRequired) {
+			common.ApiErrorT(c, registrationRegionConfirmationRequired)
+			return
+		}
 		if errors.Is(err, model.ErrEmailAlreadyTaken) {
 			common.ApiErrorT(c, "Email address is already in use")
 			return
@@ -395,7 +401,7 @@ func handleOAuthBind(c *gin.Context, providerName string, provider oauth.Provide
 // findOrCreateOAuthUser finds the existing user or creates a new one. For a
 // legacy GitHub binding that still waits for the login verification, it also
 // returns the rewrite to carry into the challenge.
-func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, token *oauth.OAuthToken, affiliateCode string) (*model.User, *service.LegacyGitHubMigration, error) {
+func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, token *oauth.OAuthToken, affiliateCode string, nonMainlandChinaConfirmed bool) (*model.User, *service.LegacyGitHubMigration, error) {
 	user := &model.User{}
 	// Check if user already exists with new ID
 	if provider.IsUserIDTaken(oauthUser.ProviderUserID) {
@@ -469,6 +475,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	// User doesn't exist, create new user if registration is enabled
 	if !common.RegisterEnabled {
 		return nil, nil, &OAuthRegistrationDisabledError{}
+	}
+	if !nonMainlandChinaConfirmed {
+		return nil, nil, errRegistrationRegionConfirmationRequired
 	}
 
 	// Set up new user

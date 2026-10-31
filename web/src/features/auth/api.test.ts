@@ -29,6 +29,27 @@ import { consumeOAuthLoginRedirect } from './lib/oauth-callback-mode'
 
 afterEach(() => vi.restoreAllMocks())
 
+test('carries the registration region confirmation into the OAuth state request', async () => {
+  const post = vi
+    .spyOn(api, 'post')
+    .mockResolvedValue({
+      data: { success: true, data: { flow_token: 'state' } },
+    })
+  await createOAuthAuthorization(
+    'oidc',
+    'login',
+    undefined,
+    undefined,
+    undefined,
+    true
+  )
+  expect(post).toHaveBeenCalledWith(
+    '/api/oauth/state',
+    expect.objectContaining({ non_mainland_china_confirmed: true }),
+    expect.anything()
+  )
+})
+
 test('starts third-party login without human verification', async () => {
   const post = vi.spyOn(api, 'post').mockResolvedValue({
     data: { success: true, data: { flow_token: 'state' } },

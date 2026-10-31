@@ -9,9 +9,9 @@ import (
 
 const requiredEmailVerificationMigrationKey = "_migration.require_email_verification.v1"
 
-// migrateRequiredEmailVerification makes verification the default when the
-// option has never been configured. Existing administrator choices are kept,
-// and the marker prevents repeating the migration on later startups.
+// migrateRequiredEmailVerification enables verification on fresh installations.
+// Existing users (including deleted users) preserve the legacy default, while
+// explicit administrator choices always win.
 func migrateRequiredEmailVerification(db *gorm.DB) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		var marker Option
@@ -23,8 +23,18 @@ func migrateRequiredEmailVerification(db *gorm.DB) error {
 			return err
 		}
 
+		var existingUser User
+		err = tx.Unscoped().Select("id").First(&existingUser).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		verificationEnabled := "true"
+		if err == nil {
+			verificationEnabled = "false"
+		}
+
 		options := []Option{
-			{Key: "EmailVerificationEnabled", Value: "true"},
+			{Key: "EmailVerificationEnabled", Value: verificationEnabled},
 			{Key: requiredEmailVerificationMigrationKey, Value: "true"},
 		}
 		return tx.Clauses(clause.OnConflict{

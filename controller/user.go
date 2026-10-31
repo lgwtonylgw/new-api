@@ -214,6 +214,10 @@ func writeLoginResponse(c *gin.Context, user *model.User, bundle *service.AuthBu
 	})
 }
 
+const registrationRegionConfirmationRequired = "Please confirm that you are not a mainland China user before registering"
+
+var errRegistrationRegionConfirmationRequired = errors.New(registrationRegionConfirmationRequired)
+
 func Register(c *gin.Context) {
 	if !common.RegisterEnabled {
 		common.ApiErrorT(c, "New user registration has been disabled by administrator")
@@ -223,12 +227,20 @@ func Register(c *gin.Context) {
 		common.ApiErrorT(c, "Password registration has been disabled by administrator, please use third-party account verification")
 		return
 	}
-	var user model.User
-	err := common.DecodeJson(c.Request.Body, &user)
+	var request struct {
+		model.User
+		NonMainlandChinaConfirmed bool `json:"non_mainland_china_confirmed"`
+	}
+	err := common.DecodeJson(c.Request.Body, &request)
 	if err != nil {
 		common.ApiErrorT(c, "Invalid parameters")
 		return
 	}
+	if !request.NonMainlandChinaConfirmed {
+		common.ApiErrorT(c, registrationRegionConfirmationRequired)
+		return
+	}
+	user := request.User
 	user.Username = strings.TrimSpace(user.Username)
 	user.Email = model.NormalizeEmail(user.Email)
 	if user.Username == "" {
@@ -244,24 +256,8 @@ func Register(c *gin.Context) {
 			common.ApiErrorT(c, "Email verification is enabled, please enter email address and verification code")
 			return
 		}
-		if !common.VerifyCodeWithKey(user.Email, user.VerificationCode, common.EmailVerificationPurpose) {
-			common.ApiErrorT(c, "Verification code is incorrect or has expired")
-			return
-		}
-		if err := model.EnsureEmailAvailable(user.Email, 0); err != nil {
-			if errors.Is(err, model.ErrEmailAlreadyTaken) {
-				common.ApiErrorT(c, "Email address is already in use")
-				return
-			}
-			common.ApiErrorT(c, "Database error, please contact the administrator")
-			return
-		}
 	}
-	emailForExistCheck := ""
-	if common.EmailVerificationEnabled {
-		emailForExistCheck = user.Email
-	}
-	exist, err := model.CheckUserExistOrDeleted(user.Username, emailForExistCheck)
+	exist, err := model.CheckUserExistOrDeleted(user.Username, "")
 	if err != nil {
 		common.ApiErrorT(c, "Database error, please contact the administrator")
 		common.SysLog(common.LogText("CheckUserExistOrDeleted error: %v", err))
@@ -270,6 +266,23 @@ func Register(c *gin.Context) {
 	if exist {
 		common.ApiErrorT(c, "Username already exists or has been deleted")
 		return
+	}
+	// Check username availability before consuming the single-use code so a
+	// corrected username can be submitted with the same verification email.
+	if common.EmailVerificationEnabled && !common.VerifyCodeWithKey(user.Email, user.VerificationCode, common.EmailVerificationPurpose) {
+		common.ApiErrorT(c, "Verification code is incorrect or has expired")
+		return
+	}
+	// Check email ownership before revealing whether the address is in use.
+	if common.EmailVerificationEnabled {
+		if err := model.EnsureEmailAvailable(user.Email, 0); err != nil {
+			if errors.Is(err, model.ErrEmailAlreadyTaken) {
+				common.ApiErrorT(c, "Email address is already in use")
+				return
+			}
+			common.ApiErrorT(c, "Database error, please contact the administrator")
+			return
+		}
 	}
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
 	inviterId, _ := model.GetUserIdByAffCode(affCode)

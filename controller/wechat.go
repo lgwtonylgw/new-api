@@ -90,6 +90,10 @@ func WeChatAuth(c *gin.Context) {
 		}
 	} else {
 		if common.RegisterEnabled {
+			if c.Query("non_mainland_china_confirmed") != "true" {
+				common.ApiErrorT(c, registrationRegionConfirmationRequired)
+				return
+			}
 			user.Username = "wechat_" + strconv.Itoa(model.GetMaxUserId()+1)
 			user.DisplayName = "WeChat User"
 			user.Role = common.RoleCommonUser

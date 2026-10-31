@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
@@ -37,6 +38,114 @@ import (
 )
 
 type authTurnstileTransport func(*http.Request) (*http.Response, error)
+
+func TestRegistrationRequiresRegionConfirmation(t *testing.T) {
+	setupSecurityEnrollmentTest(t)
+	originalRegister, originalPasswordRegister := common.RegisterEnabled, common.PasswordRegisterEnabled
+	common.RegisterEnabled, common.PasswordRegisterEnabled = true, true
+	t.Cleanup(func() {
+		common.RegisterEnabled, common.PasswordRegisterEnabled = originalRegister, originalPasswordRegister
+	})
+	for _, body := range []string{
+		`{"username":"region-user","password":"registration-password"}`,
+		`{"username":"region-user","password":"registration-password","non_mainland_china_confirmed":false}`,
+	} {
+		response := securityEnrollmentRequest(http.MethodPost, "/api/user/register", body, "", service.AuthIdentity{}, Register)
+		assert.Contains(t, response.Body.String(), registrationRegionConfirmationRequired)
+	}
+	var count int64
+	require.NoError(t, model.DB.Model(&model.User{}).Where("username = ?", "region-user").Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+func TestOAuthRegistrationRequiresRegionConfirmationButExistingLoginDoesNot(t *testing.T) {
+	existing, _ := setupSecurityEnrollmentTest(t)
+	provider := &legacyGitHubOAuthProvider{providerUserID: "900001"}
+	response := legacyGitHubOAuthLogin(t, provider, false)
+	assert.Contains(t, response.Body.String(), registrationRegionConfirmationRequired)
+	var count int64
+	require.NoError(t, model.DB.Model(&model.User{}).Where("github_id = ?", "900001").Count(&count).Error)
+	assert.Zero(t, count)
+
+	require.NoError(t, model.DB.Model(existing).Update("github_id", "900001").Error)
+	response = legacyGitHubOAuthLogin(t, provider, false)
+	var result struct {
+		Success bool `json:"success"`
+	}
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+	assert.True(t, result.Success, response.Body.String())
+}
+
+func TestWeChatRegistrationRequiresRegionConfirmation(t *testing.T) {
+	setupSecurityEnrollmentTest(t)
+	previousEnabled, previousMode := common.WeChatAuthEnabled, common.WeChatAuthMode
+	common.WeChatAuthEnabled, common.WeChatAuthMode = true, "builtin"
+	t.Cleanup(func() { common.WeChatAuthEnabled, common.WeChatAuthMode = previousEnabled, previousMode })
+	code, err := service.IssueWeChatVerificationCode(context.Background(), "region-unconfirmed-openid")
+	require.NoError(t, err)
+	response := securityEnrollmentRequest(http.MethodGet, "/api/oauth/wechat?code="+code, "", "", service.AuthIdentity{}, WeChatAuth)
+	assert.Contains(t, response.Body.String(), registrationRegionConfirmationRequired)
+	var count int64
+	require.NoError(t, model.DB.Model(&model.User{}).Where("wechat_id = ?", "region-unconfirmed-openid").Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+func TestUserAgreementIncludesRegionRestrictionForSavedAgreement(t *testing.T) {
+	settings := system_setting.GetLegalSettings()
+	previous := settings.UserAgreement
+	t.Cleanup(func() { settings.UserAgreement = previous })
+	settings.UserAgreement = "Previously saved custom agreement"
+	content := system_setting.GetUserAgreementContent()
+	assert.Contains(t, content, "Previously saved custom agreement")
+	assert.Contains(t, content, "本站不面向中国大陆地区用户提供注册及服务")
+	settings.UserAgreement = content
+	assert.Equal(t, content, system_setting.GetUserAgreementContent(), "do not append the restriction twice")
+}
+
+func TestRegisterPreservesVerificationCodeUntilUsernameIsAvailable(t *testing.T) {
+	existing, _ := setupSecurityEnrollmentTest(t)
+	originalRegister, originalPasswordRegister, originalVerification := common.RegisterEnabled, common.PasswordRegisterEnabled, common.EmailVerificationEnabled
+	originalDefaultToken, originalQuota := constant.GenerateDefaultToken, common.QuotaForNewUser
+	common.RegisterEnabled, common.PasswordRegisterEnabled, common.EmailVerificationEnabled = true, true, true
+	constant.GenerateDefaultToken, common.QuotaForNewUser = false, 0
+	const email, code = "registration-retry@example.com", "123456"
+	t.Cleanup(func() {
+		common.RegisterEnabled, common.PasswordRegisterEnabled, common.EmailVerificationEnabled = originalRegister, originalPasswordRegister, originalVerification
+		constant.GenerateDefaultToken, common.QuotaForNewUser = originalDefaultToken, originalQuota
+		common.DeleteKey(email, common.EmailVerificationPurpose)
+	})
+	require.NoError(t, common.RegisterVerificationCodeWithKey(email, code, common.EmailVerificationPurpose))
+
+	for _, test := range []struct {
+		username string
+		code     string
+		success  bool
+		message  string
+	}{
+		{username: existing.Username, code: code, message: "Username already exists or has been deleted"},
+		{username: "registration-retry", code: "654321", message: "Verification code is incorrect or has expired"},
+		{username: "registration-retry", code: code, success: true},
+		{username: "registration-replay", code: code, message: "Verification code is incorrect or has expired"},
+	} {
+		body, err := common.Marshal(map[string]any{
+			"username": test.username, "password": "registration-password", "email": email, "verification_code": test.code,
+			"non_mainland_china_confirmed": true,
+		})
+		require.NoError(t, err)
+		response := securityEnrollmentRequest(http.MethodPost, "/api/user/register", string(body), "", service.AuthIdentity{}, Register)
+		var result struct {
+			Success bool   `json:"success"`
+			Message string `json:"message"`
+		}
+		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+		assert.Equal(t, test.success, result.Success, response.Body.String())
+		assert.Equal(t, test.message, result.Message)
+	}
+	assert.False(t, common.VerifyCodeWithKey(email, code, common.EmailVerificationPurpose), "successful registration consumes the code")
+	var count int64
+	require.NoError(t, model.DB.Model(&model.User{}).Where("email = ?", email).Count(&count).Error)
+	assert.EqualValues(t, 1, count)
+}
 
 func (transport authTurnstileTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	return transport(request)
@@ -1191,12 +1300,18 @@ func (*legacyGitHubOAuthProvider) ProviderUserIDColumn() string { return "github
 
 // legacyGitHubOAuthLogin registers provider for one test and completes an OAuth
 // login callback with it.
-func legacyGitHubOAuthLogin(t *testing.T, provider *legacyGitHubOAuthProvider) *httptest.ResponseRecorder {
+func legacyGitHubOAuthLogin(t *testing.T, provider *legacyGitHubOAuthProvider, confirmed ...bool) *httptest.ResponseRecorder {
 	t.Helper()
 	const slug = "github-legacy-login-test"
 	oauth.Register(slug, provider)
 	t.Cleanup(func() { oauth.Unregister(slug) })
-	token, _, err := model.CreateAuthFlow(model.AuthFlowCreate{Purpose: model.AuthFlowPurposeOAuth, Provider: slug, Intent: model.AuthFlowIntentLogin, Payload: `{}`, ExpiresAt: time.Now().Add(time.Minute)})
+	regionConfirmed := true
+	if len(confirmed) != 0 {
+		regionConfirmed = confirmed[0]
+	}
+	payload, err := common.Marshal(oauthFlowPayload{NonMainlandChinaConfirmed: regionConfirmed})
+	require.NoError(t, err)
+	token, _, err := model.CreateAuthFlow(model.AuthFlowCreate{Purpose: model.AuthFlowPurposeOAuth, Provider: slug, Intent: model.AuthFlowIntentLogin, Payload: string(payload), ExpiresAt: time.Now().Add(time.Minute)})
 	require.NoError(t, err)
 	router := gin.New()
 	router.GET("/api/oauth/:provider", HandleOAuth)

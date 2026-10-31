@@ -41,6 +41,7 @@ type OAuthProvidersProps = {
   isWeChatLoading?: boolean
   redirectTo?: string
   onBeforeLogin?: () => boolean
+  nonMainlandChinaConfirmed?: boolean
 }
 
 type ProviderButton = {
@@ -59,6 +60,7 @@ export function OAuthProviders({
   isWeChatLoading = false,
   redirectTo,
   onBeforeLogin,
+  nonMainlandChinaConfirmed,
 }: OAuthProvidersProps) {
   const { t } = useTranslation()
   const {
@@ -71,7 +73,7 @@ export function OAuthProviders({
     handleLinuxDOLogin,
     handleTelegramLogin,
     handleCustomOAuthLogin,
-  } = useOAuthLogin(status, redirectTo)
+  } = useOAuthLogin(status, redirectTo, nonMainlandChinaConfirmed)
 
   const providerButtons: ProviderButton[] = []
 

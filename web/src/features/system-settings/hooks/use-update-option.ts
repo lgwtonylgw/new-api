@@ -43,6 +43,7 @@ const STATUS_RELATED_KEYS = new Set([
   'WeChatAuthEnabled',
   'WeChatAccountQRCodeImageURL',
   'ServerAddress',
+  'ApiPublicAddress',
   'passkey.enabled',
   'passkey.rp_id',
   'passkey.legacy_rp_ids',

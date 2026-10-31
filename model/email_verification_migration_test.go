@@ -3,6 +3,7 @@ package model
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -41,9 +42,17 @@ func emailVerificationMigrationDB(t *testing.T, dialect string) *gorm.DB {
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() {
 		require.NoError(t, db.Migrator().DropTable(&Option{}))
+		require.NoError(t, db.Migrator().DropTable(&User{}))
 		require.NoError(t, sqlDB.Close())
 	})
-	require.NoError(t, db.AutoMigrate(&Option{}))
+	require.NoError(t, db.AutoMigrate(&Option{}, &User{}))
+	var version string
+	versionQuery := "SELECT VERSION()"
+	if dialect == "sqlite" {
+		versionQuery = "SELECT sqlite_version()"
+	}
+	require.NoError(t, db.Raw(versionQuery).Scan(&version).Error)
+	t.Logf("database: %s %s", dialect, version)
 	return db
 }
 
@@ -73,11 +82,36 @@ func TestMigrateRequiredEmailVerificationEnablesNewInstallation(t *testing.T) {
 			db := emailVerificationMigrationDB(t, dialect)
 
 			require.NoError(t, migrateRequiredEmailVerification(db))
+			require.NoError(t, migrateRequiredEmailVerification(db))
 
 			var option Option
 			require.NoError(t, db.Where(&Option{Key: "EmailVerificationEnabled"}).First(&option).Error)
 			require.Equal(t, "true", option.Value)
 		})
+	}
+}
+
+func TestMigrateRequiredEmailVerificationPreservesLegacyDefault(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		for _, deleted := range []bool{false, true} {
+			t.Run(dialect+"/deleted="+strconv.FormatBool(deleted), func(t *testing.T) {
+				db := emailVerificationMigrationDB(t, dialect)
+				user := &User{Username: "existing-user"}
+				require.NoError(t, db.Create(user).Error)
+				if deleted {
+					require.NoError(t, db.Delete(user).Error)
+				}
+
+				require.NoError(t, migrateRequiredEmailVerification(db))
+				require.NoError(t, migrateRequiredEmailVerification(db))
+				var option Option
+				require.NoError(t, db.Where(&Option{Key: "EmailVerificationEnabled"}).First(&option).Error)
+				require.Equal(t, "false", option.Value)
+				var preserved User
+				require.NoError(t, db.Unscoped().First(&preserved, user.Id).Error)
+				require.Equal(t, deleted, preserved.DeletedAt.Valid)
+			})
+		}
 	}
 }
 

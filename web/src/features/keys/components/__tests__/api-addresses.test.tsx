@@ -118,7 +118,7 @@ it.each([
       server_address: 'https://gateway.example.com/proxy/',
     },
     label: 'Default API address',
-    url: 'https://gateway.example.com/proxy/',
+    url: 'https://gateway.example.com/proxy',
   },
   {
     status: { api_info: [] },

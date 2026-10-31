@@ -26,12 +26,12 @@ import { SignUpForm } from './sign-up/components/sign-up-form'
 import type { SystemStatus } from './types'
 
 let status: SystemStatus
-const { sendEmailVerificationMock, sendPasswordResetEmailMock } = vi.hoisted(
-  () => ({
+const { sendEmailVerificationMock, sendPasswordResetEmailMock, registerMock } =
+  vi.hoisted(() => ({
     sendEmailVerificationMock: vi.fn(),
     sendPasswordResetEmailMock: vi.fn(),
-  })
-)
+    registerMock: vi.fn(),
+  }))
 
 vi.mock('@/hooks/use-status', () => ({ useStatus: () => ({ status }) }))
 vi.mock('@/features/auth/api', async () => {
@@ -42,6 +42,7 @@ vi.mock('@/features/auth/api', async () => {
     ...actual,
     sendEmailVerification: sendEmailVerificationMock,
     sendPasswordResetEmail: sendPasswordResetEmailMock,
+    register: registerMock,
   }
 })
 vi.mock('@tanstack/react-router', () => ({
@@ -79,6 +80,7 @@ vi.mock('@/components/turnstile', () => ({
 }))
 
 beforeEach(() => {
+  registerMock.mockResolvedValue({ success: true })
   sendEmailVerificationMock.mockResolvedValue({ success: true })
   sendPasswordResetEmailMock.mockResolvedValue({ success: true })
   status = {
@@ -103,7 +105,9 @@ it('sends an email code without waiting for human verification', async () => {
   const user = userEvent.setup()
   render(<SignUpForm />)
 
-  await user.click(screen.getByRole('checkbox'))
+  await user.click(
+    screen.getByRole('checkbox', { name: /I have read and agree/ })
+  )
   await user.click(
     screen.getByRole('button', { name: 'Sign up with username' })
   )
@@ -159,7 +163,9 @@ it.each(['login', 'register'])(
       expect(
         screen.getByRole('link', { name: 'Privacy Policy' })
       ).toHaveAttribute('href', '/privacy-policy')
-      await user.click(screen.getByRole('checkbox'))
+      await user.click(
+        screen.getByRole('checkbox', { name: /I have read and agree/ })
+      )
     } else {
       expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
       expect(
@@ -249,6 +255,53 @@ it('does not offer password registration when it is disabled', () => {
   expect(
     screen.queryByRole('button', { name: 'Sign up with username' })
   ).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('checkbox'))
+  fireEvent.click(
+    screen.getByRole('checkbox', { name: /I have read and agree/ })
+  )
   expect(screen.queryByLabelText('Username')).not.toBeInTheDocument()
+})
+
+it('requires an explicit region confirmation before password registration', async () => {
+  status = { password_register_enabled: true }
+  const user = userEvent.setup()
+  render(<SignUpForm />)
+  const region = screen.getByRole('checkbox', {
+    name: /I confirm that I am not a mainland China user/,
+  })
+  expect(region).not.toBeChecked()
+  await user.type(screen.getByLabelText('Username'), 'region-user')
+  await user.type(
+    screen.getByLabelText('Password', { exact: true }),
+    'registration-password'
+  )
+  await user.type(
+    screen.getByLabelText('Confirm password'),
+    'registration-password'
+  )
+  await user.click(screen.getByRole('button', { name: 'Create account' }))
+  expect(registerMock).not.toHaveBeenCalled()
+  await user.click(region)
+  await user.click(screen.getByRole('button', { name: 'Create account' }))
+  await waitFor(() =>
+    expect(registerMock).toHaveBeenCalledWith(
+      expect.objectContaining({ non_mainland_china_confirmed: true })
+    )
+  )
+})
+
+it('requires region confirmation before opening WeChat registration', async () => {
+  const user = userEvent.setup()
+  render(<SignUpForm />)
+  await user.click(
+    screen.getByRole('checkbox', { name: /I have read and agree/ })
+  )
+  await user.click(screen.getByRole('button', { name: 'Continue with WeChat' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  await user.click(
+    screen.getByRole('checkbox', {
+      name: /I confirm that I am not a mainland China user/,
+    })
+  )
+  await user.click(screen.getByRole('button', { name: 'Continue with WeChat' }))
+  expect(screen.getByRole('dialog')).toBeVisible()
 })
