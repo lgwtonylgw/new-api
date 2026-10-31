@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { TFunction } from 'i18next'
 
+import { TELEGRAM_CHANNEL_URL } from '../constants'
 import type { DocArticle } from '../types'
 
 export function getGettingStartedDocs(
@@ -75,6 +76,7 @@ export function getGettingStartedDocs(
             { label: t('Model Square'), to: '/pricing' },
             { label: t('Wallet'), to: '/wallet' },
             { label: t('Usage Logs'), to: '/usage-logs' },
+            { label: t('Telegram channel'), href: TELEGRAM_CHANNEL_URL },
           ],
         },
       ],

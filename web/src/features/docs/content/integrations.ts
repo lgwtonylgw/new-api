@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import type { TFunction } from 'i18next'
 
 import type { DocArticle } from '../types'
+import { getClaudeCodeDoc } from './claude-code'
+import { getCodexDoc } from './codex'
 
 export function getIntegrationDocs(t: TFunction, root: string): DocArticle[] {
   const group = t('Integration guides')
@@ -79,116 +81,36 @@ export function getIntegrationDocs(t: TFunction, root: string): DocArticle[] {
             { label: t('Claude Code setup'), article: 'claude-code' },
           ],
         },
-      ],
-    },
-    {
-      id: 'codex',
-      group,
-      title: t('Codex setup'),
-      description: t('Connect Codex CLI using a custom Responses provider.'),
-      sections: [
         {
-          id: 'codex-config',
-          title: t('Configure the provider'),
+          id: 'client-checklist',
+          title: t('Client connection checklist'),
+          table: {
+            headers: [t('Field'), t('What to enter')],
+            rows: [
+              [t('Base URL'), `${root}/v1`],
+              [
+                t('API Key'),
+                t('The complete site API key copied from API Keys.'),
+              ],
+              [
+                t('Model'),
+                t('An exact model ID available to the selected key group.'),
+              ],
+            ],
+          },
           paragraphs: [
             t(
-              'Install Codex using its official instructions. Back up your user-level ~/.codex/config.toml, then merge the configuration below. Replace YOUR_MODEL_ID with an available model that supports Responses and coding tools.'
+              'Start with one provider, one key, and one model. Verify a short text request before enabling tools, images, search, or automatic model switching.'
             ),
-          ],
-          code: [
-            {
-              language: 'toml',
-              title: '~/.codex/config.toml',
-              value: `model = "YOUR_MODEL_ID"\nmodel_provider = "tokenaigate"\n\n[model_providers.tokenaigate]\nname = "Token AI Gate"\nbase_url = ${JSON.stringify(`${root}/v1`)}\nwire_api = "responses"\nenv_key = "TOKEN_AI_GATE_API_KEY"`,
-            },
-          ],
-          note: t(
-            'Use the user-level config file, including on Windows: %USERPROFILE%\\.codex\\config.toml. Merge with existing settings instead of replacing the entire file.'
-          ),
-        },
-        {
-          id: 'codex-key',
-          title: t('Set the key and launch'),
-          code: [
-            {
-              language: 'powershell',
-              title: 'Windows · PowerShell',
-              value: '$env:TOKEN_AI_GATE_API_KEY = "YOUR_API_KEY"\ncodex',
-            },
-            {
-              language: 'bash',
-              title: 'macOS / Linux · Bash',
-              value: 'export TOKEN_AI_GATE_API_KEY="YOUR_API_KEY"\ncodex',
-            },
-          ],
-          note: t(
-            'Replace YOUR_API_KEY locally. These environment variables apply to the current terminal session; never share the completed command or commit secrets to a repository.'
-          ),
-          paragraphs: [
             t(
-              'Start a short task and check Usage Logs. A working Chat Completions model alone does not guarantee Codex tool or Responses compatibility.'
+              'If the model list does not load, enter a supported model ID manually and inspect the error. A client may use a different discovery endpoint from its chat endpoint.'
             ),
           ],
-          links: [
-            {
-              label: t('Official Codex documentation'),
-              href: 'https://developers.openai.com/codex/config-advanced/',
-            },
-          ],
+          links: [{ label: t('API examples'), article: 'api-examples' }],
         },
       ],
     },
-    {
-      id: 'claude-code',
-      group,
-      title: t('Claude Code setup'),
-      description: t(
-        'Connect Claude Code CLI to the Anthropic-compatible gateway.'
-      ),
-      sections: [
-        {
-          id: 'claude-config',
-          title: t('Set the gateway environment'),
-          paragraphs: [
-            t(
-              'Install Claude Code using its official instructions. Select an available Claude model supporting Messages and tool use, and replace YOUR_CLAUDE_MODEL_ID below.'
-            ),
-          ],
-          code: [
-            {
-              language: 'powershell',
-              title: 'Windows · PowerShell',
-              value: `$env:ANTHROPIC_BASE_URL = '${root.replaceAll("'", "''")}'\n$env:ANTHROPIC_AUTH_TOKEN = "YOUR_API_KEY"\n$env:ANTHROPIC_MODEL = "YOUR_CLAUDE_MODEL_ID"\nclaude`,
-            },
-            {
-              language: 'bash',
-              title: 'macOS / Linux · Bash',
-              value: `export ANTHROPIC_BASE_URL='${root.replaceAll("'", "'\\''")}'\nexport ANTHROPIC_AUTH_TOKEN="YOUR_API_KEY"\nexport ANTHROPIC_MODEL="YOUR_CLAUDE_MODEL_ID"\nclaude`,
-            },
-          ],
-          note: t(
-            'ANTHROPIC_BASE_URL uses the gateway root without /v1. Check for conflicting credentials or provider settings in your existing Claude Code configuration.'
-          ),
-        },
-        {
-          id: 'claude-verify',
-          title: t('Confirm the connection'),
-          paragraphs: [
-            t(
-              'In Claude Code, use /status to inspect the active endpoint and model, then send a short prompt. Check the corresponding request in Usage Logs. Model and tool support depend on the selected route.'
-            ),
-            t(
-              'These instructions are for the CLI. Desktop applications and managed installations may use different configuration; follow the official guide for your version.'
-            ),
-          ],
-          links: [
-            {
-              label: t('Official Claude Code documentation'),
-              href: 'https://code.claude.com/docs/en/llm-gateway-connect',
-            },
-          ],
-        },
-      ],
-    },
+    getCodexDoc(t, root),
+    getClaudeCodeDoc(t, root),
   ]
 }

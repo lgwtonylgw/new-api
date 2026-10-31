@@ -25,7 +25,9 @@ import { Input } from '@/components/ui/input'
 import { getDocumentationHref } from '@/lib/site-urls'
 import { cn } from '@/lib/utils'
 
+import { TELEGRAM_CHANNEL_URL } from '../constants'
 import type { DocArticle } from '../types'
+import { DocLink } from './doc-link'
 
 type DocsNavigationProps = {
   articles: DocArticle[]
@@ -105,6 +107,12 @@ export function DocsNavigation(props: DocsNavigationProps) {
           </div>
         ))}
       </nav>
+      <div className='border-t pt-5'>
+        <DocLink
+          link={{ label: t('Telegram channel'), href: TELEGRAM_CHANNEL_URL }}
+          className='text-muted-foreground hover:text-primary focus-visible:ring-ring flex items-center justify-between rounded-lg px-3 py-2 text-sm outline-none focus-visible:ring-2'
+        />
+      </div>
     </div>
   )
 }

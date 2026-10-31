@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { TFunction } from 'i18next'
 
+import { TELEGRAM_CHANNEL_URL } from '../constants'
 import type { DocArticle } from '../types'
 
 export function getBillingAndSupportDocs(t: TFunction): DocArticle[] {
@@ -266,6 +267,16 @@ export function getBillingAndSupportDocs(t: TFunction): DocArticle[] {
             ),
           ],
         },
+        {
+          id: 'documentation-session',
+          title: t('Why does documentation use a separate console button?'),
+          paragraphs: [
+            t(
+              'Documentation is public and uses a separate domain. Choose Back to Dashboard to return to the main site, where your existing valid session is checked. The documentation header does not determine whether your main-site session has expired.'
+            ),
+          ],
+          links: [{ label: t('Back to Dashboard'), to: '/dashboard' }],
+        },
       ],
     },
     {
@@ -276,6 +287,11 @@ export function getBillingAndSupportDocs(t: TFunction): DocArticle[] {
         'Share enough detail to resolve an issue while protecting your credentials.'
       ),
       sections: [
+        {
+          id: 'telegram-channel',
+          title: t('Telegram channel'),
+          links: [{ label: '@tokenaigategpt', href: TELEGRAM_CHANNEL_URL }],
+        },
         {
           id: 'support-details',
           title: t('Prepare a support request'),

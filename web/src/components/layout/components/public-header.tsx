@@ -96,9 +96,18 @@ export function PublicHeader(props: PublicHeaderProps) {
   const pathname = routerState.location.pathname
 
   const user = auth.user
-  const isAuthenticated = !!user && !isDocumentationHost()
+  const isAuthenticated = !!user
+  const documentationHost = isDocumentationHost()
   const displaySiteName = customSiteName || systemName
   const links = dynamicLinks.length > 0 ? dynamicLinks : navLinks
+
+  let accountPath = isAuthenticated ? '/dashboard' : '/sign-in'
+  let accountLabel = isAuthenticated ? t('Go to Dashboard') : t('Sign in')
+  if (documentationHost) {
+    // The public documentation origin cannot determine the main site's session state.
+    accountPath = '/dashboard'
+    accountLabel = t('Back to Dashboard')
+  }
 
   let logoContent: ReactNode = (
     <HeaderLogo
@@ -115,12 +124,12 @@ export function PublicHeader(props: PublicHeaderProps) {
     <Button
       size='sm'
       className='h-8 rounded-lg px-3.5 text-xs font-medium'
-      render={<Link to={getMainSiteHref('/sign-in')} />}
+      render={<Link to={getMainSiteHref(accountPath)} />}
     >
-      {t('Sign in')}
+      {accountLabel}
     </Button>
   )
-  if (isAuthenticated) authContent = <ProfileDropdown />
+  if (isAuthenticated && !documentationHost) authContent = <ProfileDropdown />
   if (loading) authContent = <Skeleton className='h-8 w-20 rounded-lg' />
 
   useEffect(() => {
@@ -314,9 +323,10 @@ export function PublicHeader(props: PublicHeaderProps) {
             {/* Mobile: compact actions + hamburger */}
             <div className='flex shrink-0 items-center gap-2 lg:hidden'>
               {showThemeSwitch && <ThemeSwitch />}
-              {showAuthButtons && !loading && isAuthenticated && (
-                <ProfileDropdown />
-              )}
+              {showAuthButtons &&
+                !loading &&
+                (isAuthenticated || documentationHost) &&
+                (documentationHost ? authContent : <ProfileDropdown />)}
               <Button
                 type='button'
                 variant='ghost'
@@ -418,13 +428,11 @@ export function PublicHeader(props: PublicHeaderProps) {
           >
             {showAuthButtons && (
               <Link
-                to={getMainSiteHref(
-                  isAuthenticated ? '/dashboard' : '/sign-in'
-                )}
+                to={getMainSiteHref(accountPath)}
                 onClick={() => setMobileOpen(false)}
                 className='bg-foreground text-background inline-flex h-10 items-center justify-center rounded-lg text-sm font-medium transition-opacity hover:opacity-90 active:opacity-80'
               >
-                {isAuthenticated ? t('Go to Dashboard') : t('Sign in')}
+                {accountLabel}
               </Link>
             )}
           </div>

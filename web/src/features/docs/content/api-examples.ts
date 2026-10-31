@@ -44,6 +44,22 @@ export function getApiExamplesDoc(t: TFunction, root: string): DocArticle {
         ),
       },
       {
+        id: 'list-models',
+        title: t('List available models'),
+        paragraphs: [
+          t(
+            'Use a read-only model-list request to check the address and key first. Successful authentication does not guarantee access to every listed protocol or tool.'
+          ),
+        ],
+        code: [
+          {
+            language: 'bash',
+            title: 'Bash · GET /v1/models',
+            value: `export TOKEN_AI_GATE_API_KEY="YOUR_API_KEY"\nexport TOKEN_AI_GATE_BASE_URL=${shellRoot}\n\ncurl -i "$TOKEN_AI_GATE_BASE_URL/v1/models" \\\n  -H "Authorization: Bearer $TOKEN_AI_GATE_API_KEY"`,
+          },
+        ],
+      },
+      {
         id: 'curl-chat',
         title: t('Chat Completions with cURL'),
         code: [
@@ -82,6 +98,47 @@ export function getApiExamplesDoc(t: TFunction, root: string): DocArticle {
         ],
       },
       {
+        id: 'javascript-sdk',
+        title: t('JavaScript with the OpenAI SDK'),
+        paragraphs: [
+          t(
+            'Install the openai package with npm install openai, set TOKEN_AI_GATE_API_KEY, and save this server-side example as example.mjs. Run it with node example.mjs; never put the key in a browser bundle.'
+          ),
+        ],
+        code: [
+          {
+            language: 'javascript',
+            title: 'example.mjs',
+            value: `import OpenAI from "openai";\n\nconst client = new OpenAI({\n  apiKey: process.env.TOKEN_AI_GATE_API_KEY,\n  baseURL: ${JSON.stringify(`${root}/v1`)},\n});\nconst response = await client.chat.completions.create({\n  model: "YOUR_MODEL_ID",\n  messages: [{ role: "user", content: "Hello" }],\n});\nconsole.log(response.choices[0].message.content);`,
+          },
+        ],
+      },
+      {
+        id: 'anthropic-messages',
+        title: t('Anthropic Messages example'),
+        code: [
+          {
+            language: 'bash',
+            title: 'Bash · Messages',
+            value: `export TOKEN_AI_GATE_API_KEY="YOUR_API_KEY"\nexport TOKEN_AI_GATE_BASE_URL=${shellRoot}\n\ncurl "$TOKEN_AI_GATE_BASE_URL/v1/messages" \\\n  -H "x-api-key: $TOKEN_AI_GATE_API_KEY" \\\n  -H "anthropic-version: 2023-06-01" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"YOUR_CLAUDE_MODEL_ID","max_tokens":256,"messages":[{"role":"user","content":"Hello"}]}'`,
+          },
+        ],
+      },
+      {
+        id: 'gemini-content',
+        title: t('Gemini native API example'),
+        code: [
+          {
+            language: 'bash',
+            title: 'Bash · Gemini',
+            value: `export TOKEN_AI_GATE_API_KEY="YOUR_API_KEY"\nexport TOKEN_AI_GATE_BASE_URL=${shellRoot}\n\ncurl "$TOKEN_AI_GATE_BASE_URL/v1beta/models/YOUR_GEMINI_MODEL_ID:generateContent" \\\n  -H "x-goog-api-key: $TOKEN_AI_GATE_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{"contents":[{"role":"user","parts":[{"text":"Hello"}]}]}'`,
+          },
+        ],
+        note: t(
+          'Choose a model supporting the native protocol. In the Gemini path, replace only YOUR_GEMINI_MODEL_ID; keep the models/ prefix exactly once.'
+        ),
+      },
+      {
         id: 'responses-api',
         title: t('Responses API with cURL'),
         code: [
@@ -96,6 +153,26 @@ export function getApiExamplesDoc(t: TFunction, root: string): DocArticle {
         ),
         links: [
           { label: t('Model Square'), to: '/pricing' },
+          { label: t('Troubleshooting'), article: 'troubleshooting' },
+        ],
+      },
+      {
+        id: 'streaming-example',
+        title: t('Read a streaming response'),
+        code: [
+          {
+            language: 'bash',
+            title: 'Bash · SSE',
+            value: `export TOKEN_AI_GATE_API_KEY="YOUR_API_KEY"\nexport TOKEN_AI_GATE_BASE_URL=${shellRoot}\n\ncurl -N "$TOKEN_AI_GATE_BASE_URL/v1/chat/completions" \\\n  -H "Authorization: Bearer $TOKEN_AI_GATE_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"YOUR_MODEL_ID","stream":true,"messages":[{"role":"user","content":"Hello"}]}'`,
+          },
+        ],
+        paragraphs: [
+          t(
+            'Streaming sends SSE events over time, rather than one complete JSON document. Chat Completions and Responses use different event formats; parse the format for your chosen endpoint.'
+          ),
+        ],
+        links: [
+          { label: t('Usage Logs'), to: '/usage-logs' },
           { label: t('Troubleshooting'), article: 'troubleshooting' },
         ],
       },
