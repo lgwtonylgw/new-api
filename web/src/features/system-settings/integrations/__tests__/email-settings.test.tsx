@@ -29,11 +29,17 @@ import { EmailSettingsSection } from '../email-settings-section'
 const persistedValues: ComponentProps<
   typeof EmailSettingsSection
 >['defaultValues'] = {
+  EmailProvider: 'smtp',
+  ResendApiKey: '',
+  ResendKeyConfigured: false,
+  ResendFrom: '',
+  QuotaRemindEnabled: false,
+  QuotaRemindThreshold: '0',
   SMTPServer: 'smtp.resend.com',
   SMTPPort: '465',
   SMTPAccount: 'resend',
   SMTPFrom: 'noreply@example.com',
-  SMTPToken: 're_test_access_token',
+  SMTPToken: '',
   SMTPSSLEnabled: true,
   SMTPStartTLSEnabled: false,
   SMTPInsecureSkipVerify: false,
@@ -63,7 +69,7 @@ async function renderSettings() {
 }
 
 describe('SMTP settings display', () => {
-  it('shows persisted SMTP fields including the access token', async () => {
+  it('shows persisted SMTP fields without exposing the saved credential', async () => {
     await renderSettings()
 
     expect(screen.getByRole('textbox', { name: 'SMTP Host' })).toHaveValue(
@@ -76,8 +82,8 @@ describe('SMTP settings display', () => {
     expect(screen.getByRole('textbox', { name: 'From Address' })).toHaveValue(
       'noreply@example.com'
     )
-    expect(
-      screen.getByRole('textbox', { name: 'Password / Access Token' })
-    ).toHaveValue('re_test_access_token')
+    const credential = screen.getByLabelText('Password / Access Token')
+    expect(credential).toHaveAttribute('type', 'password')
+    expect(credential).toHaveValue('')
   })
 })

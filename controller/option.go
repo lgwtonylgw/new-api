@@ -104,7 +104,8 @@ func GetOptions(c *gin.Context) {
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
 		if k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" ||
-			k == "payment_setting.alipay_manual_enabled" || k == "payment_setting.alipay_qr_code_url" || k == "payment_setting.alipay_payee_name" {
+			k == "payment_setting.alipay_manual_enabled" || k == "payment_setting.alipay_qr_code_url" ||
+			k == "payment_setting.alipay_payee_name" || k == "ResendKeyConfigured" {
 			continue
 		}
 		value := common.Interface2String(v)
@@ -127,6 +128,9 @@ func GetOptions(c *gin.Context) {
 			optionValues[k] = value
 		}
 	}
+	options = append(options, &model.Option{
+		Key: "ResendKeyConfigured", Value: strconv.FormatBool(strings.TrimSpace(common.OptionMap["ResendApiKey"]) != ""),
+	})
 	common.OptionMapRWMutex.Unlock()
 	// Display the same effective expressions used by pricing and settlement,
 	// including built-in defaults absent from persisted administrator options.

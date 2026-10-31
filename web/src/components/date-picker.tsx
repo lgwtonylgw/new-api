@@ -31,8 +31,8 @@ import dayjs from '@/lib/dayjs'
 
 const calendarLocales = {
   en: enUS,
-  zhTW,
   zhCN,
+  zhTW,
   fr,
   ru,
   ja,
