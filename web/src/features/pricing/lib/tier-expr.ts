@@ -258,6 +258,7 @@ const ESTIMATOR_VARS = [
   { var: 'cr', stateKey: 'cacheReadTokens' },
   { var: 'cc', stateKey: 'cacheCreateTokens' },
   { var: 'cc1h', stateKey: 'cacheCreate1hTokens' },
+  { var: 'cc12h', stateKey: 'cacheCreate12hTokens' },
   { var: 'img', stateKey: 'imageTokens' },
   { var: 'img_cr', stateKey: 'imageCacheTokens' },
   { var: 'img_o', stateKey: 'imageOutputTokens' },
@@ -266,9 +267,9 @@ const ESTIMATOR_VARS = [
 ] as const
 
 export type ExtraTokenValues = Record<
-  (typeof ESTIMATOR_VARS)[number]['stateKey'],
+  Exclude<(typeof ESTIMATOR_VARS)[number]['stateKey'], 'cacheCreate12hTokens'>,
   number
->
+> & { cacheCreate12hTokens?: number }
 
 export type EvalResult = {
   cost: number
@@ -320,11 +321,12 @@ export function buildEstimatorTokens(
       extraTokenValues.imageTokens +
       extraTokenValues.audioInputTokens +
       extraTokenValues.cacheCreateTokens +
-      extraTokenValues.cacheCreate1hTokens,
+      extraTokenValues.cacheCreate1hTokens +
+      (extraTokenValues.cacheCreate12hTokens ?? 0),
     ...Object.fromEntries(
       ESTIMATOR_VARS.map((field) => [
         field.var,
-        extraTokenValues[field.stateKey],
+        extraTokenValues[field.stateKey] ?? 0,
       ])
     ),
   }

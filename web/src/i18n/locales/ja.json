@@ -995,6 +995,7 @@
     "By tokens": "トークン数別",
     "Cache": "キャッシュ",
     "Cache create (1h) price": "キャッシュ作成価格 (1時間)",
+    "Cache create (12h) price": "キャッシュ書き込み価格 (12時間)",
     "Cache create price": "キャッシュ作成価格",
     "Cache Creation": "キャッシュ作成",
     "Cache Creation (1h)": "キャッシュ作成 (1h)",

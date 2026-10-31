@@ -268,9 +268,17 @@ type InputTokenDetails struct {
 	// input_tokens_details.cache_write_tokens (Responses). It is billed at the
 	// cache-creation price.
 	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
-	TextTokens       int `json:"text_tokens"`
-	AudioTokens      int `json:"audio_tokens"`
-	ImageTokens      int `json:"image_tokens"`
+	// Responses reports disjoint cache-write counts for its 30-minute and
+	// 12-hour TTLs. Keep the breakdown for expression-based billing.
+	CacheWriteTokensDetails *CacheWriteTokensDetails `json:"cache_write_tokens_details,omitempty"`
+	TextTokens              int                      `json:"text_tokens"`
+	AudioTokens             int                      `json:"audio_tokens"`
+	ImageTokens             int                      `json:"image_tokens"`
+}
+
+type CacheWriteTokensDetails struct {
+	TTL30mTokens int `json:"ttl_30m_tokens"`
+	TTL12hTokens int `json:"ttl_12h_tokens"`
 }
 
 // CachedTokenDetails describes subsets of cached_tokens. Pointers distinguish
@@ -288,6 +296,10 @@ func (d *CachedTokenDetails) HasTokens() bool {
 
 // Clone preserves presence information without sharing mutable usage fields.
 func (d InputTokenDetails) Clone() InputTokenDetails {
+	if d.CacheWriteTokensDetails != nil {
+		copy := *d.CacheWriteTokensDetails
+		d.CacheWriteTokensDetails = &copy
+	}
 	if d.CachedTokensDetails != nil {
 		cached := *d.CachedTokensDetails
 		if cached.TextTokens != nil {
@@ -315,6 +327,14 @@ func (d InputTokenDetails) Clone() InputTokenDetails {
 // values are clamped to zero so they can never lower a charge.
 func (d InputTokenDetails) CacheCreationTokensTotal() int {
 	total := max(d.CacheWriteTokens, d.CachedCreationTokens)
+	if details := d.CacheWriteTokensDetails; details != nil && details.TTL30mTokens >= 0 && details.TTL12hTokens >= 0 {
+		// Never overflow an int when the upstream sends untrusted token counts.
+		if details.TTL30mTokens <= int(^uint(0)>>1)-details.TTL12hTokens {
+			total = max(total, details.TTL30mTokens+details.TTL12hTokens)
+		} else {
+			total = int(^uint(0) >> 1)
+		}
+	}
 	if total < 0 {
 		return 0
 	}

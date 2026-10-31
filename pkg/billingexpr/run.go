@@ -74,6 +74,7 @@ func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, usedVars map[
 		"len":         params.Len,
 		"cr":          params.CR,
 		"cc":          params.CC,
+		"cc12h":       params.CC12h,
 		"cc1h":        params.CC1h,
 		"img":         params.Img,
 		"img_cr":      params.ImgCR,

@@ -48,6 +48,7 @@ func MergeUsageNonZero(current *Usage, incoming *Usage) *Usage {
 		if details.CachedTokens > 0 ||
 			details.CachedCreationTokens > 0 ||
 			details.CacheWriteTokens > 0 ||
+			details.CacheWriteTokensDetails != nil ||
 			details.TextTokens > 0 ||
 			details.AudioTokens > 0 ||
 			details.ImageTokens > 0 || details.CachedTokensDetails != nil {
@@ -291,6 +292,10 @@ func mergeGeminiTokenDetails(current []GeminiPromptTokensDetails, incoming []Gem
 }
 
 func mergeInputTokenDetails(current *InputTokenDetails, incoming InputTokenDetails) {
+	if incoming.CacheWriteTokensDetails != nil {
+		copy := *incoming.CacheWriteTokensDetails
+		current.CacheWriteTokensDetails = &copy
+	}
 	if incoming.CachedTokensDetails != nil {
 		// Unlike legacy scalar counters, these optional fields explicitly report
 		// zero. Merge only present modalities and detach the resulting snapshot.
