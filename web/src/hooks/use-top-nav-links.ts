@@ -99,7 +99,11 @@ export function useTopNavLinks(): TopNavLink[] {
 
   // The dedicated documentation hostname serves the same application.
   if (modules?.docs !== false) {
-    links.push({ title: t('Docs'), href: getDocumentationHref() })
+    links.push({
+      title: t('Docs'),
+      href: getDocumentationHref(),
+      external: !documentationHost,
+    })
   }
 
   // About
