@@ -866,8 +866,8 @@ git pull --ff-only origin feature/20261013-init
 git diff --name-only "$OLD_COMMIT"..HEAD
 
 docker compose config --quiet
-DOCKER_BUILDKIT=1 docker compose build new-api
-docker compose up -d --no-deps --no-build new-api
+docker compose build --pull new-api
+docker compose up -d --no-deps new-api
 
 docker compose ps
 docker compose logs --tail=100 new-api
@@ -881,42 +881,19 @@ curl -fsS https://tokenaigate.com/api/status
 
 ### 10.1 仅更新应用代码
 
-适用于 MySQL 和 Redis 已正常运行、仅应用代码发生变化的日常更新：
+只更新应用代码，不重建 MySQL 和 Redis：
 
 ```bash
 cd /data/new-api
 git status --short
 git pull --ff-only origin feature/20261013-init
-DOCKER_BUILDKIT=1 docker compose build new-api
-docker compose up -d --no-deps --no-build new-api
+docker compose build --pull new-api
+docker compose up -d --no-deps new-api
 
 docker compose ps
 docker compose logs --tail=100 new-api
 curl -fsS http://127.0.0.1:3000/api/status
 curl -fsS https://tokenaigate.com/api/status
-```
-
-构建成功后再执行启动命令；若构建失败，先处理错误，保留当前正在运行的容器。`--no-deps` 避免操作 MySQL 和 Redis，`--no-build` 使用刚刚构建好的应用镜像。
-
-日常构建默认复用已有镜像层，无需每次添加 `--pull`。`--pull` 会尝试从仓库拉取基础镜像，但不等于禁用构建缓存。首次部署或需要重新拉取基础镜像时，可将上面的构建命令替换为：
-
-```bash
-DOCKER_BUILDKIT=1 docker compose build --pull new-api
-```
-
-当前 Dockerfile 的基础镜像使用固定摘要；升级基础镜像需要先更新 Dockerfile 中对应的摘要，仅添加 `--pull` 不会自动升级到同名标签的最新版本。
-
-构建缓存说明：
-
-- Dockerfile 已启用 Go 编译缓存。首次使用、切换构建器或清理缓存后的构建仍需预热；后续在同一构建器上更新时可复用依赖的编译结果。
-- 前端文件嵌入 Go 可执行文件，修改前端或文档页面后仍需重新构建前端和应用镜像。
-- `.dockerignore` 已排除本地数据、日志、缓存和 `.env` 文件，减少构建上下文传输；这不会删除宿主机文件，也不影响 Compose 读取 `.env` 或挂载数据目录。
-- 日常更新避免添加 `--no-cache`，也不要在每次更新前清理构建缓存。
-
-如需定位耗时阶段，可使用详细构建日志：
-
-```bash
-DOCKER_BUILDKIT=1 docker compose --progress plain build new-api
 ```
 
 ### 10.2 Compose 基础配置发生变化
