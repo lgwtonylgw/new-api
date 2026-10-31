@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
 
@@ -25,11 +25,38 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { getLobeIcon, getLobeIconNames } from '../lobe-icon'
 
-vi.mock('@lobe-icons/Mistral/components/Color.mjs', () => {
+vi.mock('@lobe-icons/Mistral/components/Color.js', () => {
   throw new Error('Icon chunk unavailable')
 })
 
 describe('Lobe icons', () => {
+  it('resolves brand variant imports to files shipped by the installed icon package', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, '../lobe-icon.tsx'),
+      'utf8'
+    )
+    const template =
+      source.match(
+        /`(@lobe-icons\/\$\{baseKey\}\/components\/\$\{variant\}[^`]*)`/
+      )?.[1] ?? ''
+    expect(template).not.toBe('')
+    const iconRoot = resolve(
+      import.meta.dirname,
+      '../../../node_modules/@lobehub/icons/es'
+    )
+    for (const [brand, variant] of [
+      ['OpenAI', 'Mono'],
+      ['Claude', 'Color'],
+      ['Gemini', 'Color'],
+    ]) {
+      const request = template
+        .replace('${baseKey}', brand)
+        .replace('${variant}', variant)
+        .replace('@lobe-icons/', '')
+      expect(existsSync(resolve(iconRoot, request)), request).toBe(true)
+    }
+  })
+
   it.each([
     '/build/web/node_modules/@lobehub/icons/es/',
     'D:\\a\\new-api\\web\\node_modules\\@lobehub\\icons\\es\\',
@@ -50,14 +77,14 @@ describe('Lobe icons', () => {
     ) as { webpackInclude: RegExp }
     const separator = root.includes('\\') ? '\\' : '/'
     const files = [
-      'OpenAI/components/Mono.mjs',
-      'Claude/components/Color.mjs',
-      'Gemini/components/Color.mjs',
-      'Gemma/components/Simple.mjs',
-      'LobeHub/components/Morden.mjs',
-      'OpenAI/index.mjs',
+      'OpenAI/components/Mono.js',
+      'Claude/components/Color.js',
+      'Gemini/components/Color.js',
+      'Gemma/components/Simple.js',
+      'LobeHub/components/Morden.js',
+      'OpenAI/index.js',
       'OpenAI/components/Mono.d.ts',
-      'OpenAI/components/Unknown.mjs',
+      'OpenAI/components/Unknown.js',
     ]
     const included = files.filter((file) =>
       webpackInclude.test(root + file.replaceAll('/', separator))
