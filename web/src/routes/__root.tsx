@@ -42,6 +42,7 @@ import {
 } from '@/lib/auth-session'
 import { subscribeAuthSessionEvents } from '@/lib/auth-session-sync'
 import { resolveLegacyRoute } from '@/lib/legacy-route'
+import { resolveDocumentationRedirect } from '@/lib/site-urls'
 import { useAuthStore } from '@/stores/auth-store'
 
 function RootComponent() {
@@ -115,6 +116,11 @@ export const Route = createRootRouteWithContext<{
 }>()({
   // 应用初始化与路由解析前统一校验会话
   beforeLoad: async ({ location }) => {
+    const documentationTarget = resolveDocumentationRedirect(location.href)
+    if (documentationTarget) {
+      throw redirect({ href: documentationTarget, replace: true })
+    }
+
     const legacyTarget = resolveLegacyRoute(location.href)
     if (legacyTarget) {
       throw redirect({ href: legacyTarget, replace: true })

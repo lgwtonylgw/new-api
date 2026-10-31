@@ -29,6 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { getDocumentationHref } from '@/lib/site-urls'
 
 import type { DocArticle } from '../types'
 import { DocLink } from './doc-link'
@@ -69,7 +70,11 @@ export function DocsArticle(props: {
               className='text-xl font-semibold tracking-tight'
             >
               <Link
-                to='/docs/$article'
+                to={
+                  props.article.id === 'overview'
+                    ? getDocumentationHref()
+                    : '/docs/$article'
+                }
                 params={{ article: props.article.id }}
                 hash={section.id}
                 className='hover:text-primary'
@@ -170,7 +175,11 @@ export function DocsArticle(props: {
         <div>
           {props.previous && (
             <Link
-              to='/docs/$article'
+              to={
+                props.previous.id === 'overview'
+                  ? getDocumentationHref()
+                  : '/docs/$article'
+              }
               params={{ article: props.previous.id }}
               className='hover:border-primary/30 block h-full rounded-xl border p-4'
             >

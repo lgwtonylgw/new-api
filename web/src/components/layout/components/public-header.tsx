@@ -31,6 +31,7 @@ import { SystemUpdateAction } from '@/features/system-update/system-update-actio
 import { useNotifications } from '@/hooks/use-notifications'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
+import { getMainSiteHref, isDocumentationHost } from '@/lib/site-urls'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -95,7 +96,7 @@ export function PublicHeader(props: PublicHeaderProps) {
   const pathname = routerState.location.pathname
 
   const user = auth.user
-  const isAuthenticated = !!user
+  const isAuthenticated = !!user && !isDocumentationHost()
   const displaySiteName = customSiteName || systemName
   const links = dynamicLinks.length > 0 ? dynamicLinks : navLinks
 
@@ -114,7 +115,7 @@ export function PublicHeader(props: PublicHeaderProps) {
     <Button
       size='sm'
       className='h-8 rounded-lg px-3.5 text-xs font-medium'
-      render={<Link to='/sign-in' />}
+      render={<Link to={getMainSiteHref('/sign-in')} />}
     >
       {t('Sign in')}
     </Button>
@@ -217,7 +218,7 @@ export function PublicHeader(props: PublicHeaderProps) {
             {/* Logo */}
             <div className='@container/system-brand flex min-w-0 flex-1 items-center gap-1 lg:min-w-36'>
               <Link
-                to={homeUrl}
+                to={getMainSiteHref(homeUrl)}
                 className='group flex min-w-0 items-center gap-2.5'
               >
                 <div className='flex size-7 shrink-0 items-center justify-center transition-all duration-300 group-hover:scale-105'>
@@ -417,7 +418,9 @@ export function PublicHeader(props: PublicHeaderProps) {
           >
             {showAuthButtons && (
               <Link
-                to={isAuthenticated ? '/dashboard' : '/sign-in'}
+                to={getMainSiteHref(
+                  isAuthenticated ? '/dashboard' : '/sign-in'
+                )}
                 onClick={() => setMobileOpen(false)}
                 className='bg-foreground text-background inline-flex h-10 items-center justify-center rounded-lg text-sm font-medium transition-opacity hover:opacity-90 active:opacity-80'
               >

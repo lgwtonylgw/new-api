@@ -22,6 +22,7 @@ import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Input } from '@/components/ui/input'
+import { getDocumentationHref } from '@/lib/site-urls'
 import { cn } from '@/lib/utils'
 
 import type { DocArticle } from '../types'
@@ -41,7 +42,7 @@ export function DocsNavigation(props: DocsNavigationProps) {
   return (
     <div className='space-y-7'>
       <Link
-        to='/docs'
+        to={getDocumentationHref()}
         onClick={props.onNavigate}
         className='flex items-center gap-2.5 text-base font-semibold'
       >
@@ -78,7 +79,9 @@ export function DocsNavigation(props: DocsNavigationProps) {
                   <li key={article.id}>
                     <Link
                       to={
-                        article.id === 'overview' ? '/docs' : '/docs/$article'
+                        article.id === 'overview'
+                          ? getDocumentationHref()
+                          : '/docs/$article'
                       }
                       params={{ article: article.id }}
                       onClick={props.onNavigate}

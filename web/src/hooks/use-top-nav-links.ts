@@ -21,6 +21,11 @@ import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
 import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
+import {
+  getDocumentationHref,
+  getMainSiteHref,
+  isDocumentationHost,
+} from '@/lib/site-urls'
 import { useAuthStore } from '@/stores/auth-store'
 
 export type TopNavLink = {
@@ -56,41 +61,50 @@ export function useTopNavLinks(): TopNavLink[] {
   }, [status])
 
   const isAuthed = !!auth?.user
+  const documentationHost = isDocumentationHost()
 
   const links: TopNavLink[] = []
 
   // Home
   if (modules?.home !== false) {
-    links.push({ title: t('Home'), href: '/' })
+    links.push({ title: t('Home'), href: getMainSiteHref('/') })
   }
 
   // Console -> /dashboard (new console path)
   if (modules?.console !== false) {
-    links.push({ title: t('Console'), href: '/dashboard' })
+    links.push({ title: t('Console'), href: getMainSiteHref('/dashboard') })
   }
 
   // Pricing
   const pricing = modules?.pricing
   if (pricing && typeof pricing === 'object' && pricing.enabled) {
-    const requiresAuth = pricing.requireAuth && !isAuthed
-    links.push({ title: t('Model Square'), href: '/pricing', requiresAuth })
+    const requiresAuth = pricing.requireAuth && !isAuthed && !documentationHost
+    links.push({
+      title: t('Model Square'),
+      href: getMainSiteHref('/pricing'),
+      requiresAuth,
+    })
   }
 
   // Rankings
   const rankings = modules?.rankings
   if (rankings && typeof rankings === 'object' && rankings.enabled) {
-    const requiresAuth = rankings.requireAuth && !isAuthed
-    links.push({ title: t('Rankings'), href: '/rankings', requiresAuth })
+    const requiresAuth = rankings.requireAuth && !isAuthed && !documentationHost
+    links.push({
+      title: t('Rankings'),
+      href: getMainSiteHref('/rankings'),
+      requiresAuth,
+    })
   }
 
-  // Customer documentation lives in this application; docs_link remains for upstream help.
+  // The dedicated documentation hostname serves the same application.
   if (modules?.docs !== false) {
-    links.push({ title: t('Docs'), href: '/docs' })
+    links.push({ title: t('Docs'), href: getDocumentationHref() })
   }
 
   // About
   if (modules?.about !== false) {
-    links.push({ title: t('About'), href: '/about' })
+    links.push({ title: t('About'), href: getMainSiteHref('/about') })
   }
 
   return links

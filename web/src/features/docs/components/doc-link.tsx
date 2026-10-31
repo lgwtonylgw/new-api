@@ -19,13 +19,19 @@ For commercial licensing, please contact support@quantumnous.com
 import { Link } from '@tanstack/react-router'
 import { ArrowUpRight } from 'lucide-react'
 
+import { getDocumentationHref, getMainSiteHref } from '@/lib/site-urls'
+
 import type { DocLink as DocLinkData } from '../types'
 
 export function DocLink(props: { link: DocLinkData; className?: string }) {
   if (props.link.article) {
     return (
       <Link
-        to='/docs/$article'
+        to={
+          props.link.article === 'overview'
+            ? getDocumentationHref()
+            : '/docs/$article'
+        }
         params={{ article: props.link.article }}
         className={props.className}
       >
@@ -48,7 +54,7 @@ export function DocLink(props: { link: DocLinkData; className?: string }) {
   }
   if (props.link.to) {
     return (
-      <Link to={props.link.to} className={props.className}>
+      <Link to={getMainSiteHref(props.link.to)} className={props.className}>
         {props.link.label}
       </Link>
     )

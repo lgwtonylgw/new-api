@@ -16,10 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, lazyRouteComponent } from '@tanstack/react-router'
 
 import { Home } from '@/features/home'
+import { isDocumentationHost } from '@/lib/site-urls'
+
+const Documentation = lazyRouteComponent(
+  () => import('@/features/docs'),
+  'Documentation'
+)
 
 export const Route = createFileRoute('/')({
-  component: Home,
+  component: isDocumentationHost() ? Documentation : Home,
 })

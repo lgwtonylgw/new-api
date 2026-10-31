@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
+import { getMainSiteHref } from '@/lib/site-urls'
 import { cn } from '@/lib/utils'
 
 interface FooterLink {
@@ -62,7 +63,7 @@ function FooterLinkItem(props: { link: FooterLink }) {
 
   return (
     <Link
-      to={props.link.href}
+      to={getMainSiteHref(props.link.href)}
       className='text-muted-foreground hover:text-foreground text-sm transition-colors duration-200'
     >
       {label}
@@ -104,7 +105,7 @@ function LegalLinks(props: { leadingSeparator?: boolean }) {
             </span>
           )}
           <Link
-            to={item.href}
+            to={getMainSiteHref(item.href)}
             className='hover:text-foreground transition-colors duration-200'
           >
             {item.label}
@@ -253,7 +254,10 @@ export function Footer(props: FooterProps) {
         <div className='flex flex-col justify-between gap-10 md:flex-row md:gap-16'>
           {/* Brand column */}
           <div className='shrink-0'>
-            <Link to='/' className='group flex items-center gap-2.5'>
+            <Link
+              to={getMainSiteHref('/')}
+              className='group flex items-center gap-2.5'
+            >
               <img
                 src={displayLogo}
                 alt={displayName}
@@ -271,14 +275,14 @@ export function Footer(props: FooterProps) {
           {/* Links columns */}
           {isDemoSiteMode && (
             <div className='grid grid-cols-3 gap-8 md:gap-16'>
-              {displayColumns.map((column, index) => (
-                <div key={index}>
+              {displayColumns.map((column) => (
+                <div key={column.title}>
                   <p className='text-muted-foreground/50 mb-3 text-xs font-medium tracking-wider uppercase'>
                     {t(column.title)}
                   </p>
                   <ul className='space-y-2.5'>
-                    {column.links.map((link, linkIndex) => (
-                      <li key={linkIndex}>
+                    {column.links.map((link) => (
+                      <li key={`${link.text}:${link.href}`}>
                         <FooterLinkItem link={link} />
                       </li>
                     ))}

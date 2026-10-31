@@ -36,6 +36,7 @@ import {
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { getApiPublicAddress } from '@/lib/api-public-address'
+import { getDocumentationHref, getMainSiteHref } from '@/lib/site-urls'
 
 import { DocsArticle } from './components/docs-article'
 import { DocsNavigation } from './components/docs-navigation'
@@ -94,7 +95,11 @@ export function Documentation(props: { articleId?: string }) {
             <BookOpen aria-hidden='true' className='text-primary size-4' />
             {t('Documentation center')}
           </p>
-          <Button variant='outline' size='sm' render={<Link to='/keys' />}>
+          <Button
+            variant='outline'
+            size='sm'
+            render={<Link to={getMainSiteHref('/keys')} />}
+          >
             {t('API Keys')}
           </Button>
         </div>
@@ -178,7 +183,11 @@ export function Documentation(props: { articleId?: string }) {
                   {results.map((result) => (
                     <li key={result.id}>
                       <Link
-                        to='/docs/$article'
+                        to={
+                          result.id === 'overview'
+                            ? getDocumentationHref()
+                            : '/docs/$article'
+                        }
                         params={{ article: result.id }}
                         onClick={handleNavigate}
                         className='hover:border-primary/30 focus-visible:ring-ring block rounded-xl border p-5 outline-none focus-visible:ring-2'
@@ -231,7 +240,11 @@ export function Documentation(props: { articleId?: string }) {
                 {article.sections.map((section) => (
                   <li key={section.id}>
                     <Link
-                      to='/docs/$article'
+                      to={
+                        article.id === 'overview'
+                          ? getDocumentationHref()
+                          : '/docs/$article'
+                      }
                       params={{ article: article.id }}
                       hash={section.id}
                       className='text-muted-foreground hover:text-primary block text-xs leading-5'

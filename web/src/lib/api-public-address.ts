@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { isDocumentationHost, MAIN_SITE_ORIGIN } from '@/lib/site-urls'
 import type { StatusData } from '@/lib/status-query'
 
 /** Public relay root for client imports and examples; never a console API base. */
@@ -34,5 +35,6 @@ export function getApiPublicAddress(status: StatusData | null): string {
       return value.trim().replace(/\/+$/, '')
     }
   }
-  return typeof window === 'undefined' ? '' : window.location.origin
+  if (typeof window === 'undefined') return ''
+  return isDocumentationHost() ? MAIN_SITE_ORIGIN : window.location.origin
 }
