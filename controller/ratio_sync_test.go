@@ -44,6 +44,20 @@ func TestPricingSyncExpressionPriority(t *testing.T) {
 	}
 }
 
+func TestOfficialPresetDropsUnsupportedCacheWriteTier(t *testing.T) {
+	short := `len <= 272000 ? tier("short", p * 2 + cr * 0.1 + cc * 2.5 + cc12h * 5 + c * 10) : tier("long", p * 4 + cr * 0.2 + cc * 5 + cc12h * 10 + c * 15)`
+	data := map[string]any{
+		billing_setting.BillingModeField: map[string]any{"gpt-6.1-sol": billing_setting.BillingModeTieredExpr, "other": billing_setting.BillingModeTieredExpr, "unsupported": billing_setting.BillingModeTieredExpr},
+		billing_setting.BillingExprField: map[string]any{"gpt-6.1-sol": short, "other": `tier("base", p * 1 + c * 5)`, "unsupported": `tier("base", cc12h * 5 + c * 5)`},
+	}
+	normalizeOfficialPricingPreset(data)
+	expressions := valueMap(data[billing_setting.BillingExprField])
+	assert.Equal(t, `len <= 272000 ? tier("short", p * 2 + cr * 0.1 + cc * 2.5 + c * 10) : tier("long", p * 4 + cr * 0.2 + cc * 5 + c * 15)`, expressions["gpt-6.1-sol"])
+	assert.Equal(t, `tier("base", p * 1 + c * 5)`, expressions["other"])
+	assert.NotContains(t, expressions, "unsupported")
+	assert.NotContains(t, valueMap(data[billing_setting.BillingModeField]), "unsupported")
+}
+
 func TestRatioConfigExportsEffectiveExpressions(t *testing.T) {
 	before := config.GlobalConfig.ExportAllConfigs()
 	expose := ratio_setting.IsExposeRatioEnabled()

@@ -27,20 +27,8 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 	p := float64(usage.PromptTokens)
 	c := float64(usage.CompletionTokens)
 	cr := float64(usage.PromptTokensDetails.CachedTokens)
-	cacheWriteTotal := usage.PromptTokensDetails.CacheCreationTokensTotal()
-	cc5m := float64(cacheWriteTotal)
+	cc5m := float64(usage.PromptTokensDetails.CacheCreationTokensTotal())
 	cc1h := float64(0)
-	cc12h := float64(0)
-	if usedVars["cc12h"] && !isClaudeUsageSemantic {
-		// Responses returns non-overlapping TTL buckets. Charge any write tokens
-		// without a reported TTL as generic cc; never count a token twice.
-		if details := usage.PromptTokensDetails.CacheWriteTokensDetails; details != nil &&
-			details.TTL12hTokens >= 0 && details.TTL12hTokens <= cacheWriteTotal &&
-			details.TTL30mTokens >= 0 && details.TTL30mTokens <= cacheWriteTotal-details.TTL12hTokens {
-			cc12h = float64(details.TTL12hTokens)
-			cc5m -= cc12h
-		}
-	}
 
 	if usage.UsageSemantic == "anthropic" {
 		cc1h = float64(usage.ClaudeCacheCreation1hTokens)
@@ -88,7 +76,7 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 	// Claude: input_tokens is text-only, so add cache read + cache creation.
 	inputLen := p
 	if isClaudeUsageSemantic {
-		inputLen = p + cr + cc5m + cc1h + cc12h
+		inputLen = p + cr + cc5m + cc1h
 	}
 
 	if isClaudeUsageSemantic {
@@ -103,9 +91,6 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 		}
 		if usedVars["cc"] {
 			p -= cc5m
-		}
-		if usedVars["cc12h"] {
-			p -= cc12h
 		}
 		if usedVars["cc1h"] {
 			p -= cc1h
@@ -142,7 +127,6 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 		Len:   inputLen,
 		CR:    cr,
 		CC:    cc5m,
-		CC12h: cc12h,
 		CC1h:  cc1h,
 		Img:   img,
 		ImgCR: imgCR,

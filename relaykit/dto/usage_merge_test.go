@@ -7,19 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCacheWriteTTLSplitSurvivesUsageMerge(t *testing.T) {
-	current := &Usage{PromptTokens: 1000}
-	incoming := &Usage{InputTokensDetails: &InputTokenDetails{
-		CacheWriteTokensDetails: &CacheWriteTokensDetails{TTL30mTokens: 400, TTL12hTokens: 200},
-	}}
-	MergeUsageNonZero(current, incoming)
-	require.NotNil(t, current.InputTokensDetails)
-	require.NotNil(t, current.InputTokensDetails.CacheWriteTokensDetails)
-	assert.Equal(t, 600, current.InputTokensDetails.CacheCreationTokensTotal())
-	incoming.InputTokensDetails.CacheWriteTokensDetails.TTL12hTokens = 0
-	assert.Equal(t, 200, current.InputTokensDetails.CacheWriteTokensDetails.TTL12hTokens)
-}
-
 func TestMergeClaudeUsageCacheCreationReplacesWholeObject(t *testing.T) {
 	t.Parallel()
 

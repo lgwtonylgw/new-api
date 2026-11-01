@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -83,6 +84,53 @@ var numericPricingSyncFields = map[string]bool{
 	"audio_ratio":            true,
 	"audio_completion_ratio": true,
 	"model_price":            true,
+}
+
+// The curated preset includes a separate 12-hour cache-write price on some
+// models. This gateway exposes only the aggregate cc counter, so import those
+// models using their ordinary cache-write rate. Accept only simple additive
+// terms: a changed upstream expression must not be silently rewritten.
+var officialCacheWrite12hTerm = regexp.MustCompile(`\s*\+\s*cc12h\s*\*\s*(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)`)
+
+func stripOfficialCacheWrite12h(expression string) (string, bool) {
+	if !strings.Contains(expression, "cc12h") {
+		return expression, true
+	}
+	matches := officialCacheWrite12hTerm.FindAllStringIndex(expression, -1)
+	if len(matches) == 0 {
+		return "", false
+	}
+	for _, match := range matches {
+		rest := strings.TrimLeft(expression[match[1]:], " \t\r\n")
+		if rest != "" && !strings.ContainsRune("+):|", rune(rest[0])) {
+			return "", false
+		}
+	}
+	cleaned := officialCacheWrite12hTerm.ReplaceAllString(expression, "")
+	if strings.Contains(cleaned, "cc12h") || billing_setting.SmokeTestExpr(cleaned) != nil {
+		return "", false
+	}
+	return cleaned, true
+}
+
+func normalizeOfficialPricingPreset(data map[string]any) {
+	expressions := valueMap(data[billing_setting.BillingExprField])
+	modes := valueMap(data[billing_setting.BillingModeField])
+	for name, raw := range expressions {
+		expression, ok := raw.(string)
+		if !ok {
+			delete(expressions, name)
+			delete(modes, name)
+			continue
+		}
+		cleaned, ok := stripOfficialCacheWrite12h(expression)
+		if !ok {
+			delete(expressions, name)
+			delete(modes, name)
+			continue
+		}
+		expressions[name] = cleaned
+	}
 }
 
 type upstreamResult struct {
@@ -441,6 +489,9 @@ func FetchUpstreamRatios(c *gin.Context) {
 					}
 				}
 				if isType1 {
+					if chItem.ID == officialRatioPresetID {
+						normalizeOfficialPricingPreset(type1Data)
+					}
 					ch <- upstreamResult{Name: uniqueName, Data: type1Data}
 					return
 				}

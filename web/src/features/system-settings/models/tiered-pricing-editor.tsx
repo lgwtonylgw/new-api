@@ -315,7 +315,7 @@ function RawExprEditor({ exprString, onChange }: RawExprEditorProps) {
         <AlertDescription className='space-y-1 text-xs'>
           <div>
             {t('Variables')}: <code>len</code>, <code>p</code>, <code>c</code>,{' '}
-            <code>cr</code>, <code>cc</code>, <code>cc1h</code>, <code>cc12h</code>,{' '}
+            <code>cr</code>, <code>cc</code>, <code>cc1h</code>,{' '}
             <code>img</code>, <code>img_cr</code>, <code>img_o</code>,{' '}
             <code>ai</code>, <code>ao</code>
           </div>
@@ -733,7 +733,6 @@ function CostEstimator({ effectiveExpr, fullExpr, currency }: EstimatorProps) {
     cacheReadTokens: 0,
     cacheCreateTokens: 0,
     cacheCreate1hTokens: 0,
-    cacheCreate12hTokens: 0,
     imageTokens: 0,
     imageCacheTokens: 0,
     imageOutputTokens: 0,
@@ -836,7 +835,7 @@ function CostEstimator({ effectiveExpr, fullExpr, currency }: EstimatorProps) {
                 <Label className='text-xs'>{t(variable.shortLabel)}</Label>
                 <DraftNumberInput
                   min={0}
-                  value={extras[stateKey] ?? 0}
+                  value={extras[stateKey]}
                   onValueChange={(value) =>
                     setExtras((prev) => ({
                       ...prev,

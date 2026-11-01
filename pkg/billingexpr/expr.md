@@ -538,13 +538,6 @@ This enables future evolution without breaking existing expressions.
 
 ---
 
-OpenAI Responses cache writes with `input_tokens_details.cache_write_tokens_details`
-are separated into `cc` (30-minute TTL) and `cc12h` (12-hour TTL). A valid
-breakdown subtracts the 12-hour count from the generic cache-write total so
-neither category is billed twice. If an OpenAI-compatible upstream omits the
-TTL breakdown, its cache writes remain in `cc`; verify the upstream reports
-the breakdown before offering 12-hour cache writes with these prices.
-
 ## File Map
 
 | Layer | Files |

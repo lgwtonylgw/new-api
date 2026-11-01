@@ -33,34 +33,6 @@ const probeExpr = `param("service_tier") == "fast" ? tier("fast", p * 4 + c * 20
 
 const testQuotaPerUnit = 500_000.0
 
-func TestOpenAICacheWriteTTLBilling(t *testing.T) {
-	usage := &dto.Usage{
-		PromptTokens: 1000,
-		PromptTokensDetails: dto.InputTokenDetails{
-			CacheWriteTokens: 600,
-			CacheWriteTokensDetails: &dto.CacheWriteTokensDetails{
-				TTL30mTokens: 400,
-				TTL12hTokens: 200,
-			},
-		},
-	}
-	expression := `tier("base", p * 2 + cc * 2.5 + cc12h * 5)`
-	params := BuildTieredTokenParams(usage, false, billingexpr.UsedVars(expression))
-	assert.Equal(t, float64(400), params.P)
-	assert.Equal(t, float64(400), params.CC)
-	assert.Equal(t, float64(200), params.CC12h)
-	cost, _, err := billingexpr.RunExpr(expression, params)
-	require.NoError(t, err)
-	assert.Equal(t, float64(2800), cost)
-
-	// Providers without TTL details retain the generic write price, rather
-	// than misclassifying ordinary writes as the 12-hour tier.
-	usage.PromptTokensDetails.CacheWriteTokensDetails = nil
-	params = BuildTieredTokenParams(usage, false, billingexpr.UsedVars(expression))
-	assert.Equal(t, float64(600), params.CC)
-	assert.Zero(t, params.CC12h)
-}
-
 func makeSnapshot(expr string, groupRatio float64, estPrompt, estCompletion int) *billingexpr.BillingSnapshot {
 	return &billingexpr.BillingSnapshot{
 		BillingMode:               "tiered_expr",
