@@ -341,6 +341,23 @@ export function hasAnyCacheTokens(
   )
 }
 
+/** Only show a rate when cached reads fit within the reported input tokens. */
+export function formatCacheHitRate(
+  promptTokens: number,
+  cacheReadTokens: number
+): string | null {
+  if (
+    !Number.isSafeInteger(promptTokens) ||
+    !Number.isSafeInteger(cacheReadTokens) ||
+    promptTokens <= 0 ||
+    cacheReadTokens <= 0 ||
+    cacheReadTokens > promptTokens
+  ) {
+    return null
+  }
+  return `${((cacheReadTokens / promptTokens) * 100).toFixed(1)}%`
+}
+
 export function getTieredBillingSummary(
   other: LogOtherData | null
 ): TieredBillingSummary | null {

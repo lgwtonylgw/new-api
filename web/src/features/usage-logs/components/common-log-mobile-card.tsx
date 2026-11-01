@@ -32,7 +32,12 @@ import dayjs from '@/lib/dayjs'
 import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 
 import type { UsageLog } from '../data/schema'
-import { formatModelName, logTokenName, parseLogOther } from '../lib/format'
+import {
+  formatCacheHitRate,
+  formatModelName,
+  logTokenName,
+  parseLogOther,
+} from '../lib/format'
 import {
   getLogTypeConfig,
   isDisplayableLogType,
@@ -128,6 +133,7 @@ export function CommonLogMobileCard<TData>(props: {
   const contentCell = props.cells.get('content')
   const channelCell = props.cells.get('channel')
   const cacheRead = other?.cache_tokens || 0
+  const cacheHitRate = formatCacheHitRate(log.prompt_tokens, cacheRead)
   const cacheWrite =
     (other?.cache_creation_tokens_5m || 0) +
       (other?.cache_creation_tokens_1h || 0) ||
@@ -305,6 +311,11 @@ export function CommonLogMobileCard<TData>(props: {
           {cacheRead > 0 && (
             <span>
               {t('Cache')} ↓ {cacheRead.toLocaleString()}
+            </span>
+          )}
+          {cacheHitRate && (
+            <span>
+              {t('Cache hit rate')} {cacheHitRate}
             </span>
           )}
           {cacheWrite > 0 && (
