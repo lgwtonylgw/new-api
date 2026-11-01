@@ -17,7 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useNavigate } from '@tanstack/react-router'
-import { User, Wallet, LogOut, Settings, ShieldCheck } from 'lucide-react'
+import {
+  User,
+  Wallet,
+  LogOut,
+  Settings,
+  ShieldCheck,
+  MessageCircle,
+} from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -35,6 +42,7 @@ import useDialogState from '@/hooks/use-dialog'
 import { useIsSidebarModuleVisible } from '@/hooks/use-sidebar-config'
 import { useUserDisplay } from '@/hooks/use-user-display'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
+import { TELEGRAM_CUSTOMER_GROUP_URL } from '@/lib/customer-group'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -121,6 +129,19 @@ export function ProfileDropdown() {
               {t('Wallet')}
             </DropdownMenuItem>
           )}
+
+          <DropdownMenuItem
+            render={
+              <a
+                href={TELEGRAM_CUSTOMER_GROUP_URL}
+                target='_blank'
+                rel='noopener noreferrer'
+              />
+            }
+          >
+            <MessageCircle className='size-4' />
+            {t('Telegram customer group')}
+          </DropdownMenuItem>
 
           {isSuperAdmin && (
             <DropdownMenuItem

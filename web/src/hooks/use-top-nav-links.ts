@@ -20,6 +20,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
+import { TELEGRAM_CUSTOMER_GROUP_URL } from '@/lib/customer-group'
 import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
 import {
   getDocumentationHref,
@@ -109,6 +110,14 @@ export function useTopNavLinks(): TopNavLink[] {
   // About
   if (modules?.about !== false) {
     links.push({ title: t('About'), href: getMainSiteHref('/about') })
+  }
+
+  if (links.length > 0) {
+    links.push({
+      title: t('Telegram customer group'),
+      href: TELEGRAM_CUSTOMER_GROUP_URL,
+      external: true,
+    })
   }
 
   return links
