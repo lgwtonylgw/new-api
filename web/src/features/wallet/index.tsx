@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
 import { useStatus } from '@/hooks/use-status'
@@ -42,6 +43,7 @@ import {
   useWaffoPayment,
   useWaffoPancakePayment,
 } from './hooks'
+import { useTopupConfirmation } from './hooks/use-topup-confirmation'
 import {
   getDefaultPaymentType,
   getMinTopupAmount,
@@ -74,6 +76,7 @@ export function Wallet(props: WalletProps) {
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
   const [billingDialogOpen, setBillingDialogOpen] = useState(false)
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
   const [redemptionCode, setRedemptionCode] = useState('')
   const [creemDialogOpen, setCreemDialogOpen] = useState(false)
   const [selectedCreemProduct, setSelectedCreemProduct] =
@@ -90,13 +93,6 @@ export function Wallet(props: WalletProps) {
       ? 1
       : currency?.usdExchangeRate || 1
   }, [currency?.quotaDisplayType, currency?.usdExchangeRate])
-  const {
-    amount: paymentAmount,
-    calculating,
-    processing,
-    calculatePaymentAmount,
-    processPayment,
-  } = usePayment()
   const {
     affiliateLink,
     loading: affiliateLoading,
@@ -125,8 +121,28 @@ export function Wallet(props: WalletProps) {
     }
   }, [])
 
+  const onTopupConfirmed = useCallback(async () => {
+    await fetchUser()
+    setHistoryRefreshKey((key) => key + 1)
+    toast.success(t('Order completed successfully'))
+  }, [fetchUser, t])
+  const { pendingTradeNo, watchOrder } = useTopupConfirmation(onTopupConfirmed)
+  const {
+    amount: paymentAmount,
+    calculating,
+    processing,
+    calculatePaymentAmount,
+    processPayment,
+  } = usePayment(watchOrder)
+
   useEffect(() => {
     fetchUser()
+  }, [fetchUser])
+
+  useEffect(() => {
+    const refreshOnFocus = () => void fetchUser()
+    window.addEventListener('focus', refreshOnFocus)
+    return () => window.removeEventListener('focus', refreshOnFocus)
   }, [fetchUser])
 
   useEffect(() => {
@@ -288,6 +304,14 @@ export function Wallet(props: WalletProps) {
         <SectionPageLayout.Title>{t('Wallet')}</SectionPageLayout.Title>
         <SectionPageLayout.Content>
           <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
+            {pendingTradeNo && (
+              <div
+                role='status'
+                className='bg-muted/50 rounded-lg px-4 py-3 text-sm'
+              >
+                {t('Pending')} · {t('Order number')}: {pendingTradeNo}
+              </div>
+            )}
             <WalletStatsCard user={user} loading={userLoading} />
 
             <div
@@ -379,6 +403,7 @@ export function Wallet(props: WalletProps) {
       />
 
       <BillingHistoryDialog
+        key={historyRefreshKey}
         open={billingDialogOpen}
         onOpenChange={setBillingDialogOpen}
       />

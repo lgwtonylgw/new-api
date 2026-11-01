@@ -82,7 +82,7 @@ export async function requestPaymentAmount(
   return Number.parseFloat(response.data)
 }
 
-export function usePayment() {
+export function usePayment(onOrderCreated?: (tradeNo: string) => void) {
   const [amount, setAmount] = useState<number>(0)
   const [calculating, setCalculating] = useState(false)
   const [processing, setProcessing] = useState(false)
@@ -145,6 +145,10 @@ export function usePayment() {
         if (response.data) {
           const url = (response as unknown as { url?: string }).url
           if (url) {
+            const tradeNo = response.trade_no ?? response.data.out_trade_no
+            if (typeof tradeNo === 'string' && tradeNo) {
+              onOrderCreated?.(tradeNo)
+            }
             submitPaymentForm(url, response.data)
             toast.success(i18next.t('Redirecting to payment page...'))
             return true
@@ -159,7 +163,7 @@ export function usePayment() {
         setProcessing(false)
       }
     },
-    []
+    [onOrderCreated]
   )
 
   return {

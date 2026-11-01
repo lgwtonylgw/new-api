@@ -37,6 +37,7 @@ export type RedemptionResponse = ApiResponse<number>
 export type AmountResponse = ApiResponse<string>
 export type PaymentResponse = ApiResponse<Record<string, unknown>> & {
   url?: string
+  trade_no?: string
 }
 export type StripePaymentResponse = ApiResponse<{ pay_link: string }>
 // Kept for legacy order details; new USDT payments use the epusdt gateway.
