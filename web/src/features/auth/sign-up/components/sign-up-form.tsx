@@ -27,7 +27,6 @@ import type { z } from 'zod'
 import { Dialog } from '@/components/dialog'
 import { PasswordInput } from '@/components/password-input'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Form,
   FormControl,
@@ -62,9 +61,7 @@ export function SignUpForm({
   const [isLoading, setIsLoading] = useState(false)
   const [showPasswordForm, setShowPasswordForm] = useState(false)
   const [verificationCode, setVerificationCode] = useState('')
-  const [agreedToLegal, setAgreedToLegal] = useState(false)
-  const [nonMainlandChinaConfirmed, setNonMainlandChinaConfirmed] =
-    useState(false)
+  const [agreedToLegal, setAgreedToLegal] = useState(true)
   const [wechatCode, setWeChatCode] = useState('')
   const [isWeChatDialogOpen, setIsWeChatDialogOpen] = useState(false)
   const [isWeChatSubmitting, setIsWeChatSubmitting] = useState(false)
@@ -135,14 +132,6 @@ export function SignUpForm({
   }, [])
 
   async function onSubmit(data: z.infer<typeof registerFormSchema>) {
-    if (!nonMainlandChinaConfirmed) {
-      toast.error(
-        t(
-          'Please confirm that you are not a mainland China user before registering'
-        )
-      )
-      return
-    }
     if (requiresLegalConsent && !agreedToLegal) {
       toast.error(legalConsentErrorMessage)
       return
@@ -163,7 +152,6 @@ export function SignUpForm({
     setIsLoading(true)
     try {
       const res = await register({
-        non_mainland_china_confirmed: nonMainlandChinaConfirmed,
         username: data.username,
         password: data.password,
         email: data.email || undefined,
@@ -207,14 +195,6 @@ export function SignUpForm({
   }
 
   const validateAlternativeLogin = () => {
-    if (!nonMainlandChinaConfirmed) {
-      toast.error(
-        t(
-          'Please confirm that you are not a mainland China user before registering'
-        )
-      )
-      return false
-    }
     if (requiresLegalConsent && !agreedToLegal) {
       toast.error(legalConsentErrorMessage)
       return false
@@ -243,7 +223,7 @@ export function SignUpForm({
 
     setIsWeChatSubmitting(true)
     try {
-      const res = await wechatLoginByCode(wechatCode, nonMainlandChinaConfirmed)
+      const res = await wechatLoginByCode(wechatCode)
       if (res?.success) {
         handleWeChatDialogChange(false)
         if (await handleLoginResult(res.data)) {
@@ -282,7 +262,6 @@ export function SignUpForm({
             status={status}
             disabled={isLoading}
             onBeforeLogin={validateAlternativeLogin}
-            nonMainlandChinaConfirmed={nonMainlandChinaConfirmed}
             onWeChatLogin={hasWeChatLogin ? handleOpenWeChatDialog : undefined}
             isWeChatLoading={isWeChatSubmitting}
           />
@@ -418,25 +397,6 @@ export function SignUpForm({
           onCheckedChange={setAgreedToLegal}
           className='mt-1'
         />
-        <div className='flex items-start gap-2'>
-          <Checkbox
-            id='registration-region-confirmation'
-            checked={nonMainlandChinaConfirmed}
-            onCheckedChange={(checked) =>
-              setNonMainlandChinaConfirmed(checked === true)
-            }
-            className='mt-0.5'
-          />
-          <Label
-            htmlFor='registration-region-confirmation'
-            className='text-muted-foreground text-xs leading-5 font-normal'
-          >
-            {t(
-              'I confirm that I am not a mainland China user and have read the service region restrictions in the User Agreement.'
-            )}
-          </Label>
-        </div>
-
         {/* Submit Button */}
         {passwordRegisterEnabled && (showPasswordForm || !hasOAuthLogin) && (
           <Button

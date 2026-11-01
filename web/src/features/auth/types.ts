@@ -36,7 +36,6 @@ export interface TwoFAPayload {
 }
 
 export interface RegisterPayload {
-  non_mainland_china_confirmed: boolean
   username: string
   password: string
   email?: string

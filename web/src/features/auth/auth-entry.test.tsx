@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
 
@@ -105,9 +105,9 @@ it('sends an email code without waiting for human verification', async () => {
   const user = userEvent.setup()
   render(<SignUpForm />)
 
-  await user.click(
+  expect(
     screen.getByRole('checkbox', { name: /I have read and agree/ })
-  )
+  ).toBeChecked()
   await user.click(
     screen.getByRole('button', { name: 'Sign up with username' })
   )
@@ -163,9 +163,9 @@ it.each(['login', 'register'])(
       expect(
         screen.getByRole('link', { name: 'Privacy Policy' })
       ).toHaveAttribute('href', '/privacy-policy')
-      await user.click(
+      expect(
         screen.getByRole('checkbox', { name: /I have read and agree/ })
-      )
+      ).toBeChecked()
     } else {
       expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
       expect(
@@ -255,20 +255,18 @@ it('does not offer password registration when it is disabled', () => {
   expect(
     screen.queryByRole('button', { name: 'Sign up with username' })
   ).not.toBeInTheDocument()
-  fireEvent.click(
-    screen.getByRole('checkbox', { name: /I have read and agree/ })
-  )
   expect(screen.queryByLabelText('Username')).not.toBeInTheDocument()
 })
 
-it('requires an explicit region confirmation before password registration', async () => {
+it('does not require a separate region checkbox for password registration', async () => {
   status = { password_register_enabled: true }
   const user = userEvent.setup()
   render(<SignUpForm />)
-  const region = screen.getByRole('checkbox', {
-    name: /I confirm that I am not a mainland China user/,
-  })
-  expect(region).not.toBeChecked()
+  expect(
+    screen.queryByRole('checkbox', {
+      name: /I confirm that I am not a mainland China user/,
+    })
+  ).not.toBeInTheDocument()
   await user.type(screen.getByLabelText('Username'), 'region-user')
   await user.type(
     screen.getByLabelText('Password', { exact: true }),
@@ -279,29 +277,20 @@ it('requires an explicit region confirmation before password registration', asyn
     'registration-password'
   )
   await user.click(screen.getByRole('button', { name: 'Create account' }))
-  expect(registerMock).not.toHaveBeenCalled()
-  await user.click(region)
-  await user.click(screen.getByRole('button', { name: 'Create account' }))
-  await waitFor(() =>
-    expect(registerMock).toHaveBeenCalledWith(
-      expect.objectContaining({ non_mainland_china_confirmed: true })
-    )
-  )
+  await waitFor(() => expect(registerMock).toHaveBeenCalledTimes(1))
 })
 
-it('requires region confirmation before opening WeChat registration', async () => {
+it('defaults to legal consent and respects opting out for WeChat registration', async () => {
   const user = userEvent.setup()
   render(<SignUpForm />)
-  await user.click(
-    screen.getByRole('checkbox', { name: /I have read and agree/ })
-  )
+  const consent = screen.getByRole('checkbox', {
+    name: /I have read and agree/,
+  })
+  expect(consent).toBeChecked()
+  await user.click(consent)
   await user.click(screen.getByRole('button', { name: 'Continue with WeChat' }))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  await user.click(
-    screen.getByRole('checkbox', {
-      name: /I confirm that I am not a mainland China user/,
-    })
-  )
+  await user.click(consent)
   await user.click(screen.getByRole('button', { name: 'Continue with WeChat' }))
   expect(screen.getByRole('dialog')).toBeVisible()
 })

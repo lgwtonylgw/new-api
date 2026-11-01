@@ -39,36 +39,32 @@ import (
 
 type authTurnstileTransport func(*http.Request) (*http.Response, error)
 
-func TestRegistrationRequiresRegionConfirmation(t *testing.T) {
+func TestRegistrationDoesNotRequireSeparateRegionConfirmation(t *testing.T) {
 	setupSecurityEnrollmentTest(t)
-	originalRegister, originalPasswordRegister := common.RegisterEnabled, common.PasswordRegisterEnabled
-	common.RegisterEnabled, common.PasswordRegisterEnabled = true, true
+	originalRegister, originalPasswordRegister, originalVerification := common.RegisterEnabled, common.PasswordRegisterEnabled, common.EmailVerificationEnabled
+	common.RegisterEnabled, common.PasswordRegisterEnabled, common.EmailVerificationEnabled = true, true, false
 	t.Cleanup(func() {
-		common.RegisterEnabled, common.PasswordRegisterEnabled = originalRegister, originalPasswordRegister
+		common.RegisterEnabled, common.PasswordRegisterEnabled, common.EmailVerificationEnabled = originalRegister, originalPasswordRegister, originalVerification
 	})
-	for _, body := range []string{
-		`{"username":"region-user","password":"registration-password"}`,
-		`{"username":"region-user","password":"registration-password","non_mainland_china_confirmed":false}`,
-	} {
-		response := securityEnrollmentRequest(http.MethodPost, "/api/user/register", body, "", service.AuthIdentity{}, Register)
-		assert.Contains(t, response.Body.String(), registrationRegionConfirmationRequired)
-	}
+	response := securityEnrollmentRequest(http.MethodPost, "/api/user/register", `{"username":"region-user","password":"registration-password"}`, "", service.AuthIdentity{}, Register)
+	assert.Contains(t, response.Body.String(), `"success":true`)
 	var count int64
 	require.NoError(t, model.DB.Model(&model.User{}).Where("username = ?", "region-user").Count(&count).Error)
-	assert.Zero(t, count)
+	assert.EqualValues(t, 1, count)
 }
 
-func TestOAuthRegistrationRequiresRegionConfirmationButExistingLoginDoesNot(t *testing.T) {
-	existing, _ := setupSecurityEnrollmentTest(t)
+func TestOAuthRegistrationDoesNotRequireSeparateRegionConfirmation(t *testing.T) {
+	setupSecurityEnrollmentTest(t)
+	previousRegister := common.RegisterEnabled
+	common.RegisterEnabled = true
+	t.Cleanup(func() { common.RegisterEnabled = previousRegister })
 	provider := &legacyGitHubOAuthProvider{providerUserID: "900001"}
-	response := legacyGitHubOAuthLogin(t, provider, false)
-	assert.Contains(t, response.Body.String(), registrationRegionConfirmationRequired)
+	response := legacyGitHubOAuthLogin(t, provider)
+	assert.Contains(t, response.Body.String(), `"success":true`)
 	var count int64
 	require.NoError(t, model.DB.Model(&model.User{}).Where("github_id = ?", "900001").Count(&count).Error)
-	assert.Zero(t, count)
-
-	require.NoError(t, model.DB.Model(existing).Update("github_id", "900001").Error)
-	response = legacyGitHubOAuthLogin(t, provider, false)
+	assert.EqualValues(t, 1, count)
+	response = legacyGitHubOAuthLogin(t, provider)
 	var result struct {
 		Success bool `json:"success"`
 	}
@@ -76,18 +72,21 @@ func TestOAuthRegistrationRequiresRegionConfirmationButExistingLoginDoesNot(t *t
 	assert.True(t, result.Success, response.Body.String())
 }
 
-func TestWeChatRegistrationRequiresRegionConfirmation(t *testing.T) {
+func TestWeChatRegistrationDoesNotRequireSeparateRegionConfirmation(t *testing.T) {
 	setupSecurityEnrollmentTest(t)
-	previousEnabled, previousMode := common.WeChatAuthEnabled, common.WeChatAuthMode
+	previousEnabled, previousMode, previousRegister := common.WeChatAuthEnabled, common.WeChatAuthMode, common.RegisterEnabled
 	common.WeChatAuthEnabled, common.WeChatAuthMode = true, "builtin"
-	t.Cleanup(func() { common.WeChatAuthEnabled, common.WeChatAuthMode = previousEnabled, previousMode })
+	common.RegisterEnabled = true
+	t.Cleanup(func() {
+		common.WeChatAuthEnabled, common.WeChatAuthMode, common.RegisterEnabled = previousEnabled, previousMode, previousRegister
+	})
 	code, err := service.IssueWeChatVerificationCode(context.Background(), "region-unconfirmed-openid")
 	require.NoError(t, err)
 	response := securityEnrollmentRequest(http.MethodGet, "/api/oauth/wechat?code="+code, "", "", service.AuthIdentity{}, WeChatAuth)
-	assert.Contains(t, response.Body.String(), registrationRegionConfirmationRequired)
+	assert.Contains(t, response.Body.String(), `"success":true`)
 	var count int64
 	require.NoError(t, model.DB.Model(&model.User{}).Where("wechat_id = ?", "region-unconfirmed-openid").Count(&count).Error)
-	assert.Zero(t, count)
+	assert.EqualValues(t, 1, count)
 }
 
 func TestUserAgreementIncludesRegionRestrictionForSavedAgreement(t *testing.T) {
@@ -100,6 +99,11 @@ func TestUserAgreementIncludesRegionRestrictionForSavedAgreement(t *testing.T) {
 	assert.Contains(t, content, "本站不面向中国大陆地区用户提供注册及服务")
 	settings.UserAgreement = content
 	assert.Equal(t, content, system_setting.GetUserAgreementContent(), "do not append the restriction twice")
+	settings.UserAgreement = "Previously saved custom agreement\n\n## 7. 服务地区限制与注册确认\n\n本站不面向中国大陆地区用户提供注册及服务。中国大陆地区用户在本条中指当前位于中国大陆或通常居住于中国大陆的用户；该限制以所在地和通常居住地为判断依据，不以国籍、民族或所用语言为判断依据。\n\n注册时，您须主动确认本人不属于上述中国大陆地区用户，并已阅读、理解本条服务地区限制。该确认适用于用户名注册以及微信、Google、GitHub、Telegram 等第三方账号首次创建本站账户；未确认者不能创建账户。\n\n您应如实作出声明，不得通过代理、VPN、虚假资料或其他方式规避本条限制。使用期间如不再符合服务地区要求，应停止使用并联系网站客服处理账户、余额及未结交易。运营方可依据合理证据核查、限制或暂停不符合要求的账户，并按适用法律处理退款及其他相关事项。"
+	content = system_setting.GetUserAgreementContent()
+	assert.Contains(t, content, "## 7. 服务地区限制")
+	assert.NotContains(t, content, "注册时，您须主动确认")
+	assert.Equal(t, 1, strings.Count(content, "本站不面向中国大陆地区用户提供注册及服务"))
 }
 
 func TestRegisterPreservesVerificationCodeUntilUsernameIsAvailable(t *testing.T) {
@@ -129,7 +133,6 @@ func TestRegisterPreservesVerificationCodeUntilUsernameIsAvailable(t *testing.T)
 	} {
 		body, err := common.Marshal(map[string]any{
 			"username": test.username, "password": "registration-password", "email": email, "verification_code": test.code,
-			"non_mainland_china_confirmed": true,
 		})
 		require.NoError(t, err)
 		response := securityEnrollmentRequest(http.MethodPost, "/api/user/register", string(body), "", service.AuthIdentity{}, Register)
@@ -1300,16 +1303,12 @@ func (*legacyGitHubOAuthProvider) ProviderUserIDColumn() string { return "github
 
 // legacyGitHubOAuthLogin registers provider for one test and completes an OAuth
 // login callback with it.
-func legacyGitHubOAuthLogin(t *testing.T, provider *legacyGitHubOAuthProvider, confirmed ...bool) *httptest.ResponseRecorder {
+func legacyGitHubOAuthLogin(t *testing.T, provider *legacyGitHubOAuthProvider) *httptest.ResponseRecorder {
 	t.Helper()
 	const slug = "github-legacy-login-test"
 	oauth.Register(slug, provider)
 	t.Cleanup(func() { oauth.Unregister(slug) })
-	regionConfirmed := true
-	if len(confirmed) != 0 {
-		regionConfirmed = confirmed[0]
-	}
-	payload, err := common.Marshal(oauthFlowPayload{NonMainlandChinaConfirmed: regionConfirmed})
+	payload, err := common.Marshal(oauthFlowPayload{})
 	require.NoError(t, err)
 	token, _, err := model.CreateAuthFlow(model.AuthFlowCreate{Purpose: model.AuthFlowPurposeOAuth, Provider: slug, Intent: model.AuthFlowIntentLogin, Payload: string(payload), ExpiresAt: time.Now().Add(time.Minute)})
 	require.NoError(t, err)

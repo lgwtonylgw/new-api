@@ -38,11 +38,7 @@ import type { SystemStatus, CustomOAuthProviderInfo } from '../types'
 /**
  * Hook for managing OAuth login
  */
-export function useOAuthLogin(
-  status: SystemStatus | null,
-  redirectTo?: string,
-  nonMainlandChinaConfirmed?: boolean
-) {
+export function useOAuthLogin(status: SystemStatus | null, redirectTo?: string) {
   const { t } = useTranslation()
   const [isLoading, setIsLoading] = useState(false)
   const [githubButtonText, setGithubButtonText] = useState('')
@@ -50,14 +46,7 @@ export function useOAuthLogin(
   const githubTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const startAuthorization = async (provider: string) =>
-    createOAuthAuthorization(
-      provider,
-      'login',
-      undefined,
-      undefined,
-      undefined,
-      nonMainlandChinaConfirmed
-    )
+    createOAuthAuthorization(provider, 'login')
 
   useEffect(() => {
     return () => {

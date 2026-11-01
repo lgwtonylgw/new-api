@@ -20,7 +20,10 @@ import { Link } from '@tanstack/react-router'
 import { ArrowLeft, ArrowRight, Info } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { CodeBlock } from '@/components/ai-elements/code-block'
+import {
+  CodeBlock,
+  CodeBlockCopyButton,
+} from '@/components/ai-elements/code-block'
 import {
   Table,
   TableBody,
@@ -135,9 +138,12 @@ export function DocsArticle(props: {
                 language={code.language}
                 title={code.title}
                 showLineNumbers={false}
+                showToolbar
                 enableCollapse={false}
                 className='min-w-0 overflow-hidden rounded-xl border'
-              />
+              >
+                <CodeBlockCopyButton />
+              </CodeBlock>
             ))}
             {section.note && (
               <div
