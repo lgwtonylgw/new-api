@@ -45,8 +45,7 @@ export type TopNavLink = {
  *   console: true,
  *   pricing: { enabled: true, requireAuth: false },
  *   rankings: { enabled: true, requireAuth: false },
- *   docs: true,
- *   about: true
+ *   docs: true
  * }
  */
 export function useTopNavLinks(): TopNavLink[] {
@@ -107,14 +106,9 @@ export function useTopNavLinks(): TopNavLink[] {
     })
   }
 
-  // About
-  if (modules?.about !== false) {
-    links.push({ title: t('About'), href: getMainSiteHref('/about') })
-  }
-
   if (links.length > 0) {
     links.push({
-      title: t('Telegram customer group'),
+      title: t('Telegram group'),
       href: TELEGRAM_CUSTOMER_GROUP_URL,
       external: true,
     })

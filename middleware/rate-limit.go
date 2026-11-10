@@ -194,6 +194,12 @@ func CriticalRateLimit() func(c *gin.Context) {
 	return defNext
 }
 
+// RegistrationRateLimit gives account creation a separate budget from login.
+// Keep its window within the in-memory limiter's key expiration duration.
+func RegistrationRateLimit() func(c *gin.Context) {
+	return rateLimitFactory(6, 20*60, "RG")
+}
+
 func UserCriticalRateLimit(scope string) func(c *gin.Context) {
 	if !common.CriticalRateLimitEnable {
 		return defNext

@@ -133,6 +133,14 @@ export function useUsersColumns(): ColumnDef<User>[] {
                   <LongText>{displayName}</LongText>
                 </div>
               )}
+              <div
+                data-table-text='secondary'
+                className='text-muted-foreground max-w-[180px] text-xs font-normal'
+              >
+                <LongText>
+                  {t('Email')}: {row.original.email || '—'}
+                </LongText>
+              </div>
             </div>
           )
         },
@@ -278,12 +286,21 @@ export function useUsersColumns(): ColumnDef<User>[] {
         accessorKey: 'created_at',
         header: t('Time'),
         cell: ({ row }) => (
-          <ActivityTimeCell
-            createdAt={row.original.created_at ?? 0}
-            lastAt={row.original.last_login_at ?? 0}
-            lastLabel={t('Last Login')}
-            format='absolute'
-          />
+          <div>
+            <ActivityTimeCell
+              createdAt={row.original.created_at ?? 0}
+              lastAt={row.original.last_login_at ?? 0}
+              lastLabel={t('Last Login')}
+              format='absolute'
+            />
+            <div
+              data-table-text='secondary'
+              className='text-muted-foreground mt-1 truncate text-xs font-normal'
+              title={row.original.last_login_ip || undefined}
+            >
+              {t('Last Login')} IP: {row.original.last_login_ip || '—'}
+            </div>
+          </div>
         ),
         size: 260,
         minSize: 240,

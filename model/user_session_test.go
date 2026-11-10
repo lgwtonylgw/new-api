@@ -243,6 +243,30 @@ func TestUserSessionCreateListAndRevokeOne(t *testing.T) {
 	assert.Equal(t, second.SID, active.SID)
 }
 
+func TestGetLastLoginIPsByUserIDs(t *testing.T) {
+	setupUserSessionTest(t)
+	createUserSessionTestUser(t, 1091, 1)
+	createUserSessionTestUser(t, 1092, 1)
+	now := time.Now().Unix()
+	first := newTestUserSession("ip-first", 1091, now)
+	first.IP = "192.0.2.1"
+	latest := newTestUserSession("ip-latest", 1091, now+1)
+	latest.IP = "2001:db8::2"
+	other := newTestUserSession("ip-other", 1092, now)
+	other.IP = "192.0.2.3"
+	for _, session := range []*UserSession{first, latest, other} {
+		require.NoError(t, CreateUserSession(session))
+	}
+
+	ips, err := GetLastLoginIPsByUserIDs([]int{1091, 1092, 1093})
+	require.NoError(t, err)
+	assert.Equal(t, map[int]string{1091: "2001:db8::2", 1092: "192.0.2.3"}, ips)
+
+	empty, err := GetLastLoginIPsByUserIDs(nil)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}
+
 func TestRotateUserSessionRefreshRaceAndReuse(t *testing.T) {
 	setupUserSessionTest(t)
 	now := time.Now().Unix()

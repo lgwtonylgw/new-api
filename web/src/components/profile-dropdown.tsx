@@ -140,7 +140,7 @@ export function ProfileDropdown() {
             }
           >
             <MessageCircle className='size-4' />
-            {t('Telegram customer group')}
+            {t('Telegram group')}
           </DropdownMenuItem>
 
           {isSuperAdmin && (

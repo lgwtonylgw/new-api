@@ -345,7 +345,12 @@ func GetAllUsers(c *gin.Context) {
 	}
 
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(users)
+	items, err := adminUsersWithLastLoginIP(users)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetItems(items)
 
 	common.ApiSuccess(c, pageInfo)
 	return
@@ -375,9 +380,35 @@ func SearchUsers(c *gin.Context) {
 	}
 
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(users)
+	items, err := adminUsersWithLastLoginIP(users)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetItems(items)
 	common.ApiSuccess(c, pageInfo)
 	return
+}
+
+type adminUserWithLastLoginIP struct {
+	*model.User
+	LastLoginIP string `json:"last_login_ip"`
+}
+
+func adminUsersWithLastLoginIP(users []*model.User) ([]adminUserWithLastLoginIP, error) {
+	userIDs := make([]int, 0, len(users))
+	for _, user := range users {
+		userIDs = append(userIDs, user.Id)
+	}
+	lastIPs, err := model.GetLastLoginIPsByUserIDs(userIDs)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]adminUserWithLastLoginIP, 0, len(users))
+	for _, user := range users {
+		items = append(items, adminUserWithLastLoginIP{User: user, LastLoginIP: lastIPs[user.Id]})
+	}
+	return items, nil
 }
 
 func canManageTargetRole(myRole int, targetRole int) bool {

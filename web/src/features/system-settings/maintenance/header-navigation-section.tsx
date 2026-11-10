@@ -168,11 +168,6 @@ export function HeaderNavigationSection({
       title: t('Docs'),
       description: t('Documentation or external knowledge base.'),
     },
-    {
-      key: 'about',
-      title: t('About'),
-      description: t('Static page describing the platform.'),
-    },
   ]
 
   const accessModules: Array<{

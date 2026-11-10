@@ -62,6 +62,37 @@ func (UserSession) TableName() string {
 	return "user_sessions"
 }
 
+// GetLastLoginIPsByUserIDs returns the latest retained login-session IP for
+// each user on the requested page. Sessions can be pruned, so missing entries
+// do not imply that the user has never logged in.
+func GetLastLoginIPsByUserIDs(userIDs []int) (map[int]string, error) {
+	lastIPs := make(map[int]string, len(userIDs))
+	if len(userIDs) == 0 {
+		return lastIPs, nil
+	}
+
+	var sessions []struct {
+		UserID int
+		IP     string
+	}
+	err := DB.Model(&UserSession{}).
+		Select("user_id, ip").
+		Where("user_id IN ? AND ip <> ''", userIDs).
+		Order("user_id ASC").
+		Order("created_at DESC").
+		Order("sid DESC").
+		Scan(&sessions).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, session := range sessions {
+		if _, exists := lastIPs[session.UserID]; !exists {
+			lastIPs[session.UserID] = session.IP
+		}
+	}
+	return lastIPs, nil
+}
+
 func (session *UserSession) AfterFind(_ *gorm.DB) error {
 	session.PreviousRefreshHash = strings.TrimSpace(session.PreviousRefreshHash)
 	return nil
