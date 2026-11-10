@@ -26,12 +26,17 @@ import { SignUpForm } from './sign-up/components/sign-up-form'
 import type { SystemStatus } from './types'
 
 let status: SystemStatus
-const { sendEmailVerificationMock, sendPasswordResetEmailMock, registerMock } =
-  vi.hoisted(() => ({
-    sendEmailVerificationMock: vi.fn(),
-    sendPasswordResetEmailMock: vi.fn(),
-    registerMock: vi.fn(),
-  }))
+const {
+  sendEmailVerificationMock,
+  sendPasswordResetEmailMock,
+  registerMock,
+  navigateMock,
+} = vi.hoisted(() => ({
+  sendEmailVerificationMock: vi.fn(),
+  sendPasswordResetEmailMock: vi.fn(),
+  registerMock: vi.fn(),
+  navigateMock: vi.fn(),
+}))
 
 vi.mock('@/hooks/use-status', () => ({ useStatus: () => ({ status }) }))
 vi.mock('@/features/auth/api', async () => {
@@ -46,6 +51,7 @@ vi.mock('@/features/auth/api', async () => {
   }
 })
 vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => navigateMock,
   Link: (props: {
     to: string
     children: React.ReactNode
@@ -80,6 +86,7 @@ vi.mock('@/components/turnstile', () => ({
 }))
 
 beforeEach(() => {
+  navigateMock.mockClear()
   registerMock.mockResolvedValue({ success: true })
   sendEmailVerificationMock.mockResolvedValue({ success: true })
   sendPasswordResetEmailMock.mockResolvedValue({ success: true })
@@ -249,6 +256,18 @@ it('shows username login directly when no alternative is configured', () => {
   expect(screen.getByLabelText('Username or Email')).toBeVisible()
 })
 
+it('shows the password login form directly after registration', () => {
+  render(<UserAuthForm showPasswordFormInitially />)
+  expect(screen.getByLabelText('Username or Email')).toHaveAttribute(
+    'autocomplete',
+    'username'
+  )
+  expect(screen.getByLabelText('Password')).toHaveAttribute(
+    'autocomplete',
+    'current-password'
+  )
+})
+
 it('does not offer password registration when it is disabled', () => {
   status.password_register_enabled = false
   render(<SignUpForm />)
@@ -278,6 +297,43 @@ it('does not require a separate region checkbox for password registration', asyn
   )
   await user.click(screen.getByRole('button', { name: 'Create account' }))
   await waitFor(() => expect(registerMock).toHaveBeenCalledTimes(1))
+})
+
+it('redirects to password login only after email-verified registration succeeds', async () => {
+  const user = userEvent.setup()
+  render(<SignUpForm />)
+  await user.click(
+    screen.getByRole('button', { name: 'Sign up with username' })
+  )
+  await user.type(screen.getByLabelText('Username'), 'verified-user')
+  await user.type(
+    screen.getByLabelText('Password', { exact: true }),
+    'registration-password'
+  )
+  await user.type(
+    screen.getByLabelText('Confirm password'),
+    'registration-password'
+  )
+  await user.type(
+    screen.getByLabelText('Email (required for verification)'),
+    'user@example.com'
+  )
+  await user.type(screen.getByPlaceholderText('Verification code'), '123456')
+  expect(navigateMock).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('button', { name: 'Create account' }))
+  await waitFor(() => {
+    expect(registerMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'user@example.com',
+        verification_code: '123456',
+      })
+    )
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: '/sign-in',
+      search: { password: true },
+      replace: true,
+    })
+  })
 })
 
 it('defaults to legal consent and respects opting out for WeChat registration', async () => {

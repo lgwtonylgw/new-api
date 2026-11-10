@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
@@ -58,6 +59,7 @@ export function SignUpForm({
   ...props
 }: React.HTMLAttributes<HTMLFormElement>) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [isLoading, setIsLoading] = useState(false)
   const [showPasswordForm, setShowPasswordForm] = useState(false)
   const [verificationCode, setVerificationCode] = useState('')
@@ -70,7 +72,7 @@ export function SignUpForm({
   )
 
   const { status } = useStatus()
-  const { redirectToLogin, handleLoginResult } = useAuthRedirect()
+  const { handleLoginResult } = useAuthRedirect()
   const {
     isSending: isSendingCode,
     secondsLeft,
@@ -161,7 +163,11 @@ export function SignUpForm({
 
       if (res?.success) {
         toast.success(t('Account created! Please sign in'))
-        redirectToLogin()
+        await navigate({
+          to: '/sign-in',
+          search: { password: true },
+          replace: true,
+        })
       } else {
         handleServerError(createServerError(res, t('Failed to create account')))
       }

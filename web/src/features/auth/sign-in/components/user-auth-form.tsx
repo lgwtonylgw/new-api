@@ -60,11 +60,14 @@ import { cn } from '@/lib/utils'
 export function UserAuthForm({
   className,
   redirectTo,
+  showPasswordFormInitially = false,
   ...props
-}: AuthFormProps) {
+}: AuthFormProps & { showPasswordFormInitially?: boolean }) {
   const { t } = useTranslation()
   const [isLoading, setIsLoading] = useState(false)
-  const [showPasswordForm, setShowPasswordForm] = useState(false)
+  const [showPasswordForm, setShowPasswordForm] = useState(
+    showPasswordFormInitially
+  )
   const [wechatCode, setWeChatCode] = useState('')
   const [passkeySupported, setPasskeySupported] = useState(false)
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false)

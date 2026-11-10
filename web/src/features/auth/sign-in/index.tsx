@@ -26,7 +26,7 @@ import { UserAuthForm } from './components/user-auth-form'
 
 export function SignIn() {
   const { t } = useTranslation()
-  const { redirect } = useSearch({ from: '/(auth)/sign-in' })
+  const { redirect, password } = useSearch({ from: '/(auth)/sign-in' })
   const { status } = useStatus()
 
   return (
@@ -38,7 +38,10 @@ export function SignIn() {
           </h2>
         </div>
 
-        <UserAuthForm redirectTo={redirect} />
+        <UserAuthForm
+          redirectTo={redirect}
+          showPasswordFormInitially={password}
+        />
 
         {!status?.self_use_mode_enabled &&
           status?.register_enabled !== false && (
