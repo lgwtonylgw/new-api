@@ -159,6 +159,17 @@ export function hasToolSurcharge(other: LogOtherData | null): boolean {
 /**
  * Parse the 'other' field from JSON string to object
  */
+export function getCacheWriteTokens(other: LogOtherData | null): number {
+  return Math.max(
+    0,
+    other?.cache_write_tokens ?? 0,
+    other?.cache_creation_tokens ?? 0,
+    (other?.cache_creation_tokens_5m ?? 0) +
+      (other?.cache_creation_tokens_1h ?? 0),
+    other?.cache_creation_tokens_12h ?? 0
+  )
+}
+
 export function parseLogOther(other: string): LogOtherData | null {
   if (!other) return null
   try {
@@ -335,9 +346,11 @@ export function hasAnyCacheTokens(
   return (
     (other.cache_tokens || 0) > 0 ||
     (other.image_cache_tokens || 0) > 0 ||
+    getCacheWriteTokens(other) > 0 ||
     (other.cache_creation_tokens || 0) > 0 ||
     (other.cache_creation_tokens_5m || 0) > 0 ||
-    (other.cache_creation_tokens_1h || 0) > 0
+    (other.cache_creation_tokens_1h || 0) > 0 ||
+    (other.cache_creation_tokens_12h || 0) > 0
   )
 }
 

@@ -55,5 +55,5 @@ export function getNavGroupsForPath(
   t: TFunction
 ): NavGroup[] | null {
   const view = resolveSidebarView(pathname)
-  return view ? view.getNavGroups(t) : null
+  return view ? view.getNavGroups(t, {}) : null
 }

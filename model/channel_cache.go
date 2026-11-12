@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -268,6 +269,28 @@ func CacheUpdateChannelStatus(id int, status int) {
 						break
 					}
 				}
+			}
+		}
+	} else if channel, ok := channelsIDM[id]; ok {
+		// A channel restored after automatic or manual disable must rejoin the
+		// routing index immediately, without waiting for the periodic DB sync.
+		if group2model2channels == nil {
+			group2model2channels = make(map[string]map[string][]int)
+		}
+		for group := range strings.SplitSeq(channel.Group, ",") {
+			if group2model2channels[group] == nil {
+				group2model2channels[group] = make(map[string][]int)
+			}
+			for _, model := range channel.GetModels() {
+				channels := group2model2channels[group][model]
+				if slices.Contains(channels, id) {
+					continue
+				}
+				channels = append(channels, id)
+				sort.Slice(channels, func(i, j int) bool {
+					return channelsIDM[channels[i]].GetPriority() > channelsIDM[channels[j]].GetPriority()
+				})
+				group2model2channels[group][model] = channels
 			}
 		}
 	}
