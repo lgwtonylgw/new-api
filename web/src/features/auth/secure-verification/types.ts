@@ -145,7 +145,19 @@ export interface RequestLoginVerificationOptions {
 export type VerificationRequest =
   | RequestVerificationOptions
   | RequestLoginVerificationOptions
-export type LoginResult = AuthBundle | LoginChallenge
+export interface OAuthRegistrationChallenge {
+  require_registration: true
+  flow_token: string
+  expires_at: number
+  provider_name: string
+  username: string
+  email: string
+}
+
+export type LoginResult =
+  | AuthBundle
+  | LoginChallenge
+  | OAuthRegistrationChallenge
 
 export type SecureVerificationState =
   | { phase: 'idle' }

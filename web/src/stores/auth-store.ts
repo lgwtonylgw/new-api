@@ -18,7 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { create } from 'zustand'
 
-import type { LoginChallenge } from '@/features/auth/secure-verification/types'
+import type {
+  LoginChallenge,
+  OAuthRegistrationChallenge,
+} from '@/features/auth/secure-verification/types'
 import type { AdminCapabilities } from '@/lib/admin-permissions'
 
 export type UserPermissions = {
@@ -83,6 +86,11 @@ export interface PendingLoginVerification {
   redirectTo?: string
 }
 
+export interface PendingOAuthRegistration {
+  challenge: OAuthRegistrationChallenge
+  redirectTo?: string
+}
+
 interface AuthState {
   auth: {
     user: AuthUser | null
@@ -90,11 +98,15 @@ interface AuthState {
     accessExpiresAt: number | null
     session: LoginSession | null
     pendingLoginVerification: PendingLoginVerification | null
+    pendingOAuthRegistration: PendingOAuthRegistration | null
     bootstrapState: AuthBootstrapState
     setBundle: (bundle: AuthBundle) => void
     setUser: (user: AuthUser | null) => void
     setPendingLoginVerification: (
       pending: PendingLoginVerification | null
+    ) => void
+    setPendingOAuthRegistration: (
+      pending: PendingOAuthRegistration | null
     ) => void
     setBootstrapState: (bootstrapState: AuthBootstrapState) => void
     reset: (bootstrapState?: AuthBootstrapState) => void
@@ -108,6 +120,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
     accessExpiresAt: null,
     session: null,
     pendingLoginVerification: null,
+    pendingOAuthRegistration: null,
     bootstrapState: 'idle',
     setBundle: (bundle) =>
       set((state) => ({
@@ -119,6 +132,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
           accessExpiresAt: bundle.access_expires_at,
           session: bundle.session,
           pendingLoginVerification: null,
+          pendingOAuthRegistration: null,
           bootstrapState: 'complete',
         },
       })),
@@ -128,6 +142,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
         auth: {
           ...state.auth,
           user,
+          pendingOAuthRegistration: null,
           pendingLoginVerification:
             state.auth.user?.id === user?.id
               ? state.auth.pendingLoginVerification
@@ -138,6 +153,15 @@ export const useAuthStore = create<AuthState>()((set) => ({
       set((state) => ({
         ...state,
         auth: { ...state.auth, pendingLoginVerification },
+      })),
+    setPendingOAuthRegistration: (pendingOAuthRegistration) =>
+      set((state) => ({
+        ...state,
+        auth: {
+          ...state.auth,
+          pendingOAuthRegistration,
+          pendingLoginVerification: null,
+        },
       })),
     setBootstrapState: (bootstrapState) =>
       set((state) => ({
@@ -154,6 +178,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
           accessExpiresAt: null,
           session: null,
           pendingLoginVerification: null,
+          pendingOAuthRegistration: null,
           bootstrapState,
         },
       })),

@@ -61,6 +61,8 @@ func TestOAuthRegistrationDoesNotRequireSeparateRegionConfirmation(t *testing.T)
 	provider := &legacyGitHubOAuthProvider{providerUserID: "900001"}
 	response := legacyGitHubOAuthLogin(t, provider)
 	assert.Contains(t, response.Body.String(), `"success":true`)
+	response = completeOAuthRegistrationForTest(t, response)
+	assert.Contains(t, response.Body.String(), `"success":true`)
 	var count int64
 	require.NoError(t, model.DB.Model(&model.User{}).Where("github_id = ?", "900001").Count(&count).Error)
 	assert.EqualValues(t, 1, count)
@@ -83,6 +85,8 @@ func TestWeChatRegistrationDoesNotRequireSeparateRegionConfirmation(t *testing.T
 	code, err := service.IssueWeChatVerificationCode(context.Background(), "region-unconfirmed-openid")
 	require.NoError(t, err)
 	response := securityEnrollmentRequest(http.MethodGet, "/api/oauth/wechat?code="+code, "", "", service.AuthIdentity{}, WeChatAuth)
+	assert.Contains(t, response.Body.String(), `"success":true`)
+	response = completeOAuthRegistrationForTest(t, response)
 	assert.Contains(t, response.Body.String(), `"success":true`)
 	var count int64
 	require.NoError(t, model.DB.Model(&model.User{}).Where("wechat_id = ?", "region-unconfirmed-openid").Count(&count).Error)
@@ -1319,6 +1323,128 @@ func legacyGitHubOAuthLogin(t *testing.T, provider *legacyGitHubOAuthProvider) *
 	return response
 }
 
+func completeOAuthRegistrationForTest(t *testing.T, response *httptest.ResponseRecorder) *httptest.ResponseRecorder {
+	t.Helper()
+	var result struct {
+		Data struct {
+			Required bool   `json:"require_registration"`
+			Token    string `json:"flow_token"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+	if !result.Data.Required {
+		return response
+	}
+	require.Empty(t, response.Header().Values("Set-Cookie"), "registration must not issue a login cookie")
+	body, err := common.Marshal(map[string]string{"flow_token": result.Data.Token, "password": "oauth-registration-password", "confirm_password": "oauth-registration-password"})
+	require.NoError(t, err)
+	return securityEnrollmentRequest(http.MethodPost, "/api/oauth/registration/complete", string(body), "", service.AuthIdentity{}, CompleteOAuthRegistration)
+}
+
+func TestOAuthRegistrationPasswordCompletion(t *testing.T) {
+	setupSecurityEnrollmentTest(t)
+	previousRegister, previousPasswordLogin := common.RegisterEnabled, common.PasswordLoginEnabled
+	common.RegisterEnabled, common.PasswordLoginEnabled = true, true
+	t.Cleanup(func() { common.RegisterEnabled, common.PasswordLoginEnabled = previousRegister, previousPasswordLogin })
+	provider := &legacyGitHubOAuthProvider{providerUserID: "registration-password-subject"}
+	response := legacyGitHubOAuthLogin(t, provider)
+	var started struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Required    bool   `json:"require_registration"`
+			Token       string `json:"flow_token"`
+			Username    string `json:"username"`
+			AccessToken string `json:"access_token"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &started))
+	require.True(t, started.Success, response.Body.String())
+	require.True(t, started.Data.Required)
+	assert.Empty(t, started.Data.AccessToken)
+	assert.Empty(t, response.Header().Values("Set-Cookie"))
+	var count int64
+	require.NoError(t, model.DB.Model(&model.User{}).Where("github_id = ?", provider.providerUserID).Count(&count).Error)
+	assert.Zero(t, count, "no account or signup reward exists before completion")
+	flow, err := model.GetAuthFlow(started.Data.Token, model.AuthFlowMatch{Purpose: oauthRegistrationPurpose})
+	require.NoError(t, err)
+	assert.NotContains(t, flow.Payload, `"password":`)
+	assert.NotContains(t, flow.Payload, `"access_token":`)
+	for _, invalid := range []struct{ name, password, confirm string }{
+		{"mismatched confirmation", "registration-password", "different-password"},
+		{"short password", "short", "short"},
+	} {
+		t.Run(invalid.name, func(t *testing.T) {
+			body, err := common.Marshal(map[string]string{"flow_token": started.Data.Token, "password": invalid.password, "confirm_password": invalid.confirm})
+			require.NoError(t, err)
+			rejected := securityEnrollmentRequest(http.MethodPost, "/api/oauth/registration/complete", string(body), "", service.AuthIdentity{}, CompleteOAuthRegistration)
+			assert.NotContains(t, rejected.Body.String(), `"success":true`)
+			_, err = model.GetAuthFlow(started.Data.Token, model.AuthFlowMatch{Purpose: oauthRegistrationPurpose})
+			assert.NoError(t, err, "invalid input must leave the registration retryable")
+		})
+	}
+	completed := completeOAuthRegistrationForTest(t, response)
+	require.Contains(t, completed.Body.String(), `"success":true`)
+	assert.NotEmpty(t, completed.Header().Values("Set-Cookie"))
+	account := model.User{Username: started.Data.Username, Password: "oauth-registration-password"}
+	require.NoError(t, account.ValidateAndFill(), "the first password must authenticate the same account")
+	assert.Equal(t, provider.providerUserID, account.GitHubId)
+	assert.NotEqual(t, "oauth-registration-password", account.Password)
+	assert.NotContains(t, completed.Body.String(), account.Password)
+	assert.NotContains(t, completed.Body.String(), "oauth-registration-password")
+	assert.NotContains(t, completeOAuthRegistrationForTest(t, response).Body.String(), `"success":true`, "the registration grant is single-use")
+	loggedIn := legacyGitHubOAuthLogin(t, provider)
+	assert.Contains(t, loggedIn.Body.String(), `"access_token"`, "existing users still sign in directly")
+	assert.NotContains(t, loggedIn.Body.String(), `"require_registration":true`)
+}
+
+func TestOAuthRegistrationRejectsInvalidGrantsAndExistingIdentity(t *testing.T) {
+	for _, scenario := range []string{"expired", "wrong purpose", "registration disabled", "password login disabled", "provider disabled", "existing identity"} {
+		t.Run(scenario, func(t *testing.T) {
+			setupSecurityEnrollmentTest(t)
+			previousRegister, previousPasswordLogin := common.RegisterEnabled, common.PasswordLoginEnabled
+			common.RegisterEnabled, common.PasswordLoginEnabled = true, true
+			t.Cleanup(func() { common.RegisterEnabled, common.PasswordLoginEnabled = previousRegister, previousPasswordLogin })
+			provider := &legacyGitHubOAuthProvider{providerUserID: "registration-rejection-subject"}
+			response := legacyGitHubOAuthLogin(t, provider)
+			var started struct {
+				Data struct {
+					Token string `json:"flow_token"`
+				} `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &started))
+			flow, err := model.GetAuthFlow(started.Data.Token, model.AuthFlowMatch{Purpose: oauthRegistrationPurpose})
+			require.NoError(t, err)
+			switch scenario {
+			case "expired":
+				require.NoError(t, model.DB.Model(flow).Update("expires_at", time.Now().Add(-time.Minute)).Error)
+			case "wrong purpose":
+				require.NoError(t, model.DB.Model(flow).Update("purpose", model.AuthFlowPurposeOAuth).Error)
+			case "registration disabled":
+				common.RegisterEnabled = false
+			case "password login disabled":
+				common.PasswordLoginEnabled = false
+			case "provider disabled":
+				oauth.Unregister(flow.Provider)
+			case "existing identity":
+				existing := model.User{Username: "registered-elsewhere", GitHubId: provider.providerUserID, Password: "existing-password", Role: common.RoleCommonUser, Status: common.UserStatusEnabled}
+				require.NoError(t, existing.Insert(0))
+			}
+			rejected := completeOAuthRegistrationForTest(t, response)
+			assert.NotContains(t, rejected.Body.String(), `"success":true`)
+			assert.Empty(t, rejected.Header().Values("Set-Cookie"))
+			var count int64
+			require.NoError(t, model.DB.Model(&model.User{}).Where("github_id = ?", provider.providerUserID).Count(&count).Error)
+			if scenario == "existing identity" {
+				assert.EqualValues(t, 1, count)
+				user := model.User{Username: "registered-elsewhere", Password: "existing-password"}
+				assert.NoError(t, user.ValidateAndFill(), "registration must not replace an existing password")
+			} else {
+				assert.Zero(t, count)
+			}
+		})
+	}
+}
+
 // legacyGitHubBindingAudits returns the account binding audit rows in creation
 // order together with their encoded parameters.
 func legacyGitHubBindingAudits(t *testing.T) ([]model.AuditLog, []string) {
@@ -1393,6 +1519,9 @@ func TestOAuthLoginLegacyGitHubBindingRequiresAccountEvidence(t *testing.T) {
 			}
 			provider := &legacyGitHubOAuthProvider{providerUserID: "900001", legacyID: test.legacyID, verifiedEmails: test.verifiedEmails, verifiedEmailsErr: test.verifiedEmailsErr}
 			response := legacyGitHubOAuthLogin(t, provider)
+			if test.expectNewAccount {
+				response = completeOAuthRegistrationForTest(t, response)
+			}
 			var result struct {
 				Success bool   `json:"success"`
 				Message string `json:"message"`
@@ -1577,7 +1706,7 @@ func TestOAuthBindIgnoresLegacyGitHubUsernames(t *testing.T) {
 }
 
 func TestOAuthRegistrationPersistsInviter(t *testing.T) {
-	db, dialect := openTaskDialectDatabase(t, &model.User{}, &model.Log{})
+	db, dialect := openTaskDialectDatabase(t, &model.User{}, &model.Log{}, &model.AuthFlow{})
 	oldDB, oldLogDB := model.DB, model.LOG_DB
 	oldMain, oldLog := common.MainDatabaseType(), common.LogDatabaseType()
 	oldRedis, oldRegister := common.RedisEnabled, common.RegisterEnabled
@@ -1606,13 +1735,17 @@ func TestOAuthRegistrationPersistsInviter(t *testing.T) {
 			ctx.Request.RemoteAddr = "127.0.0.1:12345"
 			provider := &oauth.GitHubProvider{}
 			identity := &oauth.OAuthUser{ProviderUserID: "inviter-test-" + tc.name, Username: "oauth-" + tc.name}
-			created, _, err := findOrCreateOAuthUser(ctx, provider, identity, &oauth.OAuthToken{}, tc.code)
+			created, _, err := findOrPrepareOAuthUser(ctx, provider, identity, &oauth.OAuthToken{}, tc.code)
 			require.NoError(t, err)
+			require.Zero(t, created.Id, "preparing registration must not create an account")
+			require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+				return createOAuthUserWithTx(tx, provider, identity.ProviderUserID, created)
+			}))
 			var stored model.User
 			require.NoError(t, db.First(&stored, created.Id).Error)
 			assert.Equal(t, tc.want, stored.InviterId)
 			assert.Equal(t, identity.ProviderUserID, stored.GitHubId)
-			existing, _, err := findOrCreateOAuthUser(ctx, provider, identity, &oauth.OAuthToken{}, "valid-aff")
+			existing, _, err := findOrPrepareOAuthUser(ctx, provider, identity, &oauth.OAuthToken{}, "valid-aff")
 			require.NoError(t, err)
 			assert.Equal(t, created.Id, existing.Id)
 			require.NoError(t, db.First(&stored, created.Id).Error)

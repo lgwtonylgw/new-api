@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -90,10 +89,18 @@ func WeChatAuth(c *gin.Context) {
 		}
 	} else {
 		if common.RegisterEnabled {
-			user.Username = "wechat_" + strconv.Itoa(model.GetMaxUserId()+1)
+			middleware.RegistrationRateLimit()(c)
+			if c.IsAborted() {
+				return
+			}
+			user.Username = "wechat_" + common.GetRandomString(8)
 			user.DisplayName = "WeChat User"
 			user.Role = common.RoleCommonUser
 			user.Status = common.UserStatusEnabled
+			if common.PasswordLoginEnabled {
+				startOAuthRegistration(c, "wechat", "WeChat", wechatId, &user)
+				return
+			}
 
 			if err := user.Insert(0); err != nil {
 				common.ApiError(c, err)

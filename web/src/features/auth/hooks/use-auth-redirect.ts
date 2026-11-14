@@ -29,6 +29,7 @@ import { applyAuthBundle, isAuthBundle } from '@/lib/api'
 import { AuthOperationError } from '@/lib/secure-verification'
 import { useAuthStore, type AuthBundle } from '@/stores/auth-store'
 
+import { isOAuthRegistrationChallenge } from '../api'
 import { isLoginChallenge } from '../secure-verification/api'
 
 /**
@@ -88,6 +89,21 @@ export function useAuthRedirect() {
       if (isAuthBundle(result)) {
         await handleLoginSuccess(result, redirectTo)
         return true
+      }
+      if (isOAuthRegistrationChallenge(result)) {
+        if (result.expires_at * 1000 <= Date.now()) {
+          throw new AuthOperationError(
+            'Login flow expired. Please sign in again.'
+          )
+        }
+        useAuthStore.getState().auth.setPendingOAuthRegistration({
+          challenge: result,
+          redirectTo:
+            sanitizeAuthRedirect(redirectTo, window.location.origin) ??
+            undefined,
+        })
+        await navigate({ to: '/sign-up', replace: true })
+        return false
       }
       if (!isLoginChallenge(result)) {
         throw new AuthOperationError('Login failed')

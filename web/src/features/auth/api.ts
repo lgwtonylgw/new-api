@@ -19,7 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import axios from 'axios'
 
 import { api, refreshAuthentication, type RefreshOutcome } from '@/lib/api'
-import { AuthOperationError } from '@/lib/secure-verification'
+import {
+  AuthOperationError,
+  authRequestOptions,
+} from '@/lib/secure-verification'
 import {
   getServerErrorMessageKey,
   getServerMessage,
@@ -32,7 +35,10 @@ import {
 } from './lib/password-encryption'
 import { getAffiliateCode } from './lib/storage'
 import type { TelegramAuthorization } from './lib/telegram-login'
-import type { VerificationOperation } from './secure-verification/types'
+import type {
+  OAuthRegistrationChallenge,
+  VerificationOperation,
+} from './secure-verification/types'
 import type {
   LoginPayload,
   LoginResponse,
@@ -41,6 +47,40 @@ import type {
   RegisterPayload,
   ApiResponse,
 } from './types'
+
+export function isOAuthRegistrationChallenge(
+  value: unknown
+): value is OAuthRegistrationChallenge {
+  if (!value || typeof value !== 'object') return false
+  const data = value as Partial<OAuthRegistrationChallenge>
+  return (
+    data.require_registration === true &&
+    typeof data.flow_token === 'string' &&
+    data.flow_token.length > 0 &&
+    typeof data.expires_at === 'number' &&
+    Number.isFinite(data.expires_at) &&
+    typeof data.provider_name === 'string' &&
+    typeof data.username === 'string' &&
+    data.username.length > 0 &&
+    typeof data.email === 'string'
+  )
+}
+
+export async function completeOAuthRegistration(
+  payload: { flow_token: string; password: string; confirm_password: string },
+  signal?: AbortSignal
+): Promise<LoginResponse> {
+  const response = await api.post<LoginResponse>(
+    '/api/oauth/registration/complete',
+    payload,
+    {
+      ...authRequestOptions,
+      signal,
+      skipAuthRefresh: true,
+    }
+  )
+  return response.data
+}
 
 // ============================================================================
 // Authentication APIs

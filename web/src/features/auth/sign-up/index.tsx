@@ -19,27 +19,49 @@ For commercial licensing, please contact support@quantumnous.com
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
+import { useAuthStore } from '@/stores/auth-store'
+
 import { AuthLayout } from '../auth-layout'
+import { OAuthRegistrationForm } from './components/oauth-registration-form'
 import { SignUpForm } from './components/sign-up-form'
 
 export function SignUp() {
   const { t } = useTranslation()
+  const registration = useAuthStore(
+    (state) => state.auth.pendingOAuthRegistration
+  )
 
   return (
     <AuthLayout>
       <div className='w-full space-y-8'>
         <div className='space-y-2'>
           <h2 className='text-center text-2xl font-semibold tracking-tight'>
-            {t('Sign up')}
+            {registration
+              ? t('Signing you in with {{provider}}', {
+                  provider: registration.challenge.provider_name,
+                })
+              : t('Sign up')}
           </h2>
+          {registration && (
+            <p className='text-muted-foreground text-center text-sm'>
+              {t('Set a password to complete your registration.')}
+            </p>
+          )}
         </div>
 
-        <SignUpForm />
+        {registration ? (
+          <OAuthRegistrationForm pending={registration} />
+        ) : (
+          <SignUpForm />
+        )}
 
         <p className='text-muted-foreground text-center text-sm'>
           {t('Already have an account?')}{' '}
           <Link
             to='/sign-in'
+            onClick={() =>
+              useAuthStore.getState().auth.setPendingOAuthRegistration(null)
+            }
             className='hover:text-primary font-medium underline underline-offset-4'
           >
             {t('Sign in')}

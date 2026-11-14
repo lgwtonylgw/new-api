@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -311,7 +310,7 @@ func handleOAuthLogin(c *gin.Context, provider oauth.Provider, oauthUser *oauth.
 		writeSecurityOperationError(c, err)
 		return
 	}
-	user, migration, err := findOrCreateOAuthUser(c, provider, oauthUser, token, payload.AffiliateCode)
+	user, migration, err := findOrPrepareOAuthUser(c, provider, oauthUser, token, payload.AffiliateCode)
 	if c.IsAborted() {
 		return
 	}
@@ -342,6 +341,19 @@ func handleOAuthLogin(c *gin.Context, provider oauth.Provider, oauthUser *oauth.
 	}
 
 	// 9. Setup login
+	if user.Id == 0 {
+		if common.PasswordLoginEnabled {
+			startOAuthRegistration(c, flow.Provider, provider.GetName(), oauthUser.ProviderUserID, user)
+			return
+		}
+		if err := model.DB.Transaction(func(tx *gorm.DB) error {
+			return createOAuthUserWithTx(tx, provider, oauthUser.ProviderUserID, user)
+		}); err != nil {
+			writeSecurityOperationError(c, err)
+			return
+		}
+		user.FinalizeOAuthUserCreation(user.InviterId)
+	}
 	setupLogin(user, migration, c)
 }
 
@@ -395,10 +407,11 @@ func handleOAuthBind(c *gin.Context, providerName string, provider oauth.Provide
 	return true, notificationFailed
 }
 
-// findOrCreateOAuthUser finds the existing user or creates a new one. For a
+// findOrPrepareOAuthUser finds an existing user or prepares a new registration.
+// New users are not persisted until registration is completed. For a
 // legacy GitHub binding that still waits for the login verification, it also
 // returns the rewrite to carry into the challenge.
-func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, token *oauth.OAuthToken, affiliateCode string) (*model.User, *service.LegacyGitHubMigration, error) {
+func findOrPrepareOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, token *oauth.OAuthToken, affiliateCode string) (*model.User, *service.LegacyGitHubMigration, error) {
 	user := &model.User{}
 	// Check if user already exists with new ID
 	if provider.IsUserIDTaken(oauthUser.ProviderUserID) {
@@ -480,7 +493,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		return nil, nil, nil
 	}
 	// Set up new user
-	user.Username = provider.GetProviderPrefix() + strconv.Itoa(model.GetMaxUserId()+1)
+	// Pending registrations must not all reserve the same next numeric ID.
+	prefix := []rune(provider.GetProviderPrefix())
+	user.Username = string(prefix[:min(len(prefix), model.UserNameMaxLength-8)]) + common.GetRandomString(8)
 
 	if oauthUser.Username != "" {
 		if exists, err := model.CheckUserExistOrDeleted(oauthUser.Username, ""); err == nil && !exists {
@@ -516,69 +531,6 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		inviterId, _ = model.GetUserIdByAffCode(affiliateCode)
 	}
 	user.InviterId = inviterId
-
-	// Use transaction to ensure user creation and OAuth binding are atomic
-	if genericProvider, ok := provider.(*oauth.GenericOAuthProvider); ok {
-		// Custom provider: create user and binding in a transaction
-		err := model.DB.Transaction(func(tx *gorm.DB) error {
-			// Create user
-			if err := user.InsertWithTx(tx, inviterId); err != nil {
-				return err
-			}
-
-			// Create OAuth binding
-			binding := &model.UserOAuthBinding{
-				UserId:         user.Id,
-				ProviderId:     genericProvider.GetProviderId(),
-				ProviderUserId: oauthUser.ProviderUserID,
-			}
-			if err := model.CreateUserOAuthBindingWithTx(tx, binding); err != nil {
-				return err
-			}
-
-			return nil
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-
-		// Perform post-transaction tasks (logs, sidebar config, inviter rewards)
-		user.FinalizeOAuthUserCreation(inviterId)
-	} else {
-		// Built-in provider: create user and update provider ID in a transaction
-		err := model.DB.Transaction(func(tx *gorm.DB) error {
-			// Create user
-			if err := user.InsertWithTx(tx, inviterId); err != nil {
-				return err
-			}
-
-			// Set the provider user ID on the user model and update
-			provider.SetProviderUserID(user, oauthUser.ProviderUserID)
-			if provider.ProviderUserIDColumn() == "telegram_id" {
-				if err := model.ClaimExternalIdentityWithTx(tx, model.ExternalIdentityProviderTelegram, oauthUser.ProviderUserID, user.Id); err != nil {
-					return err
-				}
-			}
-			if err := tx.Model(user).Updates(map[string]any{
-				"github_id":   user.GitHubId,
-				"discord_id":  user.DiscordId,
-				"oidc_id":     user.OidcId,
-				"linux_do_id": user.LinuxDOId,
-				"wechat_id":   user.WeChatId,
-				"telegram_id": user.TelegramId,
-			}).Error; err != nil {
-				return err
-			}
-
-			return nil
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-
-		// Perform post-transaction tasks
-		user.FinalizeOAuthUserCreation(inviterId)
-	}
 
 	return user, nil, nil
 }
