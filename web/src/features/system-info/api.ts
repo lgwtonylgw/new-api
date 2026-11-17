@@ -22,6 +22,8 @@ import { api } from '@/lib/api'
 import type {
   SystemInstanceDeleteResponse,
   SystemInstanceListResponse,
+  SystemMetricHistoryResponse,
+  SystemMetricRange,
   SystemTaskHistoryDeleteResponse,
 } from './types'
 
@@ -42,6 +44,17 @@ export async function deleteStaleSystemInstances() {
 export async function deleteStaleSystemInstance(nodeName: string) {
   const res = await api.delete<SystemInstanceDeleteResponse>(
     `/api/system-info/instances/${encodeURIComponent(nodeName)}`
+  )
+  return res.data
+}
+
+export async function getSystemMetricHistory(
+  nodeName: string,
+  range: SystemMetricRange
+) {
+  const res = await api.get<SystemMetricHistoryResponse>(
+    '/api/system-info/metrics',
+    { params: { node_name: nodeName, range } }
   )
   return res.data
 }

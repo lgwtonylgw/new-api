@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -52,7 +53,9 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { api } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
+import { requireServerSuccess } from '@/lib/server-error-message'
 
+import { updatePerformanceOptions } from '../api'
 import {
   SettingsForm,
   SettingsSwitchContent,
@@ -60,7 +63,6 @@ import {
 } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
-import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 
 /**
@@ -78,9 +80,12 @@ const perfSchema = z.object({
     disk_cache_max_size_mb: z.coerce.number().min(100),
     disk_cache_path: z.string(),
     monitor_enabled: z.boolean(),
-    monitor_cpu_threshold: z.coerce.number().min(0),
+    monitor_cpu_threshold: z.coerce.number().min(0).max(100),
     monitor_memory_threshold: z.coerce.number().min(0).max(100),
     monitor_disk_threshold: z.coerce.number().min(0).max(100),
+    monitor_alert_enabled: z.boolean(),
+    monitor_telegram_bot_token: z.string(),
+    monitor_telegram_chat_id: z.string(),
   }),
 })
 
@@ -96,6 +101,9 @@ type FlatPerfDefaults = {
   'performance_setting.monitor_cpu_threshold': number
   'performance_setting.monitor_memory_threshold': number
   'performance_setting.monitor_disk_threshold': number
+  'performance_setting.monitor_alert_enabled': boolean
+  'performance_setting.monitor_telegram_bot_token': string
+  'performance_setting.monitor_telegram_chat_id': string
 }
 
 const buildFormDefaults = (defaults: FlatPerfDefaults): PerfFormInput => ({
@@ -113,6 +121,12 @@ const buildFormDefaults = (defaults: FlatPerfDefaults): PerfFormInput => ({
       defaults['performance_setting.monitor_memory_threshold'],
     monitor_disk_threshold:
       defaults['performance_setting.monitor_disk_threshold'],
+    monitor_alert_enabled:
+      defaults['performance_setting.monitor_alert_enabled'],
+    monitor_telegram_bot_token:
+      defaults['performance_setting.monitor_telegram_bot_token'] ?? '',
+    monitor_telegram_chat_id:
+      defaults['performance_setting.monitor_telegram_chat_id'] ?? '',
   },
 })
 
@@ -133,6 +147,12 @@ const normalizeFormValues = (values: PerfFormValues): FlatPerfDefaults => ({
     values.performance_setting.monitor_memory_threshold,
   'performance_setting.monitor_disk_threshold':
     values.performance_setting.monitor_disk_threshold,
+  'performance_setting.monitor_alert_enabled':
+    values.performance_setting.monitor_alert_enabled,
+  'performance_setting.monitor_telegram_bot_token':
+    values.performance_setting.monitor_telegram_bot_token.trim(),
+  'performance_setting.monitor_telegram_chat_id':
+    values.performance_setting.monitor_telegram_chat_id.trim(),
 })
 
 function formatBytes(bytes: number, decimals = 2): string {
@@ -187,8 +207,10 @@ type PerformanceStats = {
 
 export function PerformanceSection(props: Props) {
   const { t } = useTranslation()
-  const updateOption = useUpdateOption()
+  const queryClient = useQueryClient()
   const [stats, setStats] = useState<PerformanceStats | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isTestingAlert, setIsTestingAlert] = useState(false)
 
   const formDefaults = useMemo(
     () => buildFormDefaults(props.defaultValues),
@@ -241,17 +263,28 @@ export function PerformanceSection(props: Props) {
       return
     }
 
-    for (const key of changedKeys) {
-      await updateOption.mutateAsync({
-        key,
-        value: normalized[key],
-      })
+    setIsSaving(true)
+    try {
+      await requireServerSuccess(
+        await updatePerformanceOptions({
+          ...values.performance_setting,
+          monitor_telegram_bot_token:
+            normalized['performance_setting.monitor_telegram_bot_token'],
+          monitor_telegram_chat_id:
+            normalized['performance_setting.monitor_telegram_chat_id'],
+        })
+      )
+      baselineRef.current = normalized
+      baselineSerializedRef.current = JSON.stringify(normalized)
+      form.reset(buildFormDefaults(normalized))
+      queryClient.invalidateQueries({ queryKey: ['system-options'] })
+      toast.success(t('Setting updated successfully'))
+      fetchStats()
+    } catch (error) {
+      handleServerError(error, t('Failed to update setting'))
+    } finally {
+      setIsSaving(false)
     }
-
-    baselineRef.current = normalized
-    baselineSerializedRef.current = JSON.stringify(normalized)
-    form.reset(buildFormDefaults(normalized))
-    fetchStats()
   }
 
   const clearDiskCache = async () => {
@@ -296,8 +329,42 @@ export function PerformanceSection(props: Props) {
     }
   }
 
+  const testTelegramAlert = async () => {
+    const botToken = form
+      .getValues('performance_setting.monitor_telegram_bot_token')
+      .trim()
+    const chatId = form
+      .getValues('performance_setting.monitor_telegram_chat_id')
+      .trim()
+    if (!botToken) {
+      toast.error(t('Enter a Telegram bot token first'))
+      return
+    }
+    if (!chatId) {
+      toast.error(t('Enter a Telegram chat ID first'))
+      return
+    }
+    setIsTestingAlert(true)
+    try {
+      const res = await api.post('/api/system-info/alerts/test', {
+        bot_token: botToken,
+        chat_id: chatId,
+      })
+      if (res.data.success) {
+        toast.success(t('Test alert sent'))
+      } else {
+        handleServerError(res.data)
+      }
+    } catch (error) {
+      handleServerError(error, t('Test alert failed'))
+    } finally {
+      setIsTestingAlert(false)
+    }
+  }
+
   const diskEnabled = form.watch('performance_setting.disk_cache_enabled')
   const monitorEnabled = form.watch('performance_setting.monitor_enabled')
+  const alertEnabled = form.watch('performance_setting.monitor_alert_enabled')
   const maxCacheSizeRaw = form.watch(
     'performance_setting.disk_cache_max_size_mb'
   )
@@ -329,7 +396,7 @@ export function PerformanceSection(props: Props) {
         <SettingsForm onSubmit={form.handleSubmit(onSubmit)}>
           <SettingsPageFormActions
             onSave={form.handleSubmit(onSubmit)}
-            isSaving={updateOption.isPending}
+            isSaving={isSaving}
           />
           {/* Disk Cache Settings */}
           <div>
@@ -487,9 +554,10 @@ export function PerformanceSection(props: Props) {
                     <Input
                       type='number'
                       min={0}
+                      max={100}
                       step={1}
                       {...safeNumberFieldProps(field)}
-                      disabled={!monitorEnabled}
+                      disabled={!monitorEnabled && !alertEnabled}
                     />
                   </FormControl>
                   <FormMessage />
@@ -509,7 +577,7 @@ export function PerformanceSection(props: Props) {
                       max={100}
                       step={1}
                       {...safeNumberFieldProps(field)}
-                      disabled={!monitorEnabled}
+                      disabled={!monitorEnabled && !alertEnabled}
                     />
                   </FormControl>
                   <FormMessage />
@@ -529,13 +597,119 @@ export function PerformanceSection(props: Props) {
                       max={100}
                       step={1}
                       {...safeNumberFieldProps(field)}
-                      disabled={!monitorEnabled}
+                      disabled={!monitorEnabled && !alertEnabled}
                     />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
+          </div>
+
+          <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)_auto] lg:items-end'>
+            <FormField
+              control={form.control}
+              name='performance_setting.monitor_alert_enabled'
+              render={({ field }) => (
+                <SettingsSwitchItem>
+                  <SettingsSwitchContent>
+                    <FormLabel>{t('Enable Telegram Alerts')}</FormLabel>
+                    <FormDescription>
+                      {t(
+                        'Alert after 3 consecutive samples exceed a threshold'
+                      )}
+                    </FormDescription>
+                  </SettingsSwitchContent>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={(checked) => {
+                        const botToken = form
+                          .getValues(
+                            'performance_setting.monitor_telegram_bot_token'
+                          )
+                          .trim()
+                        const chatId = form
+                          .getValues(
+                            'performance_setting.monitor_telegram_chat_id'
+                          )
+                          .trim()
+                        if (checked && !botToken) {
+                          form.setError(
+                            'performance_setting.monitor_telegram_bot_token',
+                            {
+                              message: t('Enter a Telegram bot token first'),
+                            }
+                          )
+                          return
+                        }
+                        if (checked && !chatId) {
+                          form.setError(
+                            'performance_setting.monitor_telegram_chat_id',
+                            {
+                              message: t('Enter a Telegram chat ID first'),
+                            }
+                          )
+                          return
+                        }
+                        form.clearErrors(
+                          'performance_setting.monitor_telegram_bot_token'
+                        )
+                        form.clearErrors(
+                          'performance_setting.monitor_telegram_chat_id'
+                        )
+                        field.onChange(checked)
+                      }}
+                    />
+                  </FormControl>
+                </SettingsSwitchItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='performance_setting.monitor_telegram_bot_token'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Telegram Bot Token')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='password'
+                      autoComplete='off'
+                      placeholder='123456789:AA...'
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Use a dedicated alert bot created with BotFather.')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='performance_setting.monitor_telegram_chat_id'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Telegram Chat ID')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder='-1001234567890 or @channel'
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <Button
+              type='button'
+              variant='outline'
+              onClick={testTelegramAlert}
+              disabled={isTestingAlert}
+            >
+              {isTestingAlert ? t('Sending...') : t('Send Test Alert')}
+            </Button>
           </div>
         </SettingsForm>
       </Form>

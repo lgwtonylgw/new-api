@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -16,9 +17,16 @@ import (
 	"github.com/bytedance/gopkg/util/gopool"
 )
 
-const systemInstanceReportInterval = 30 * time.Second
+const (
+	systemInstanceReportInterval     = 30 * time.Second
+	systemMetricSampleInterval       = time.Minute
+	systemMetricCleanupCheckInterval = time.Hour
+)
 
 var systemInstanceReporterOnce sync.Once
+var lastSystemMetricCleanupAt atomic.Int64
+var lastSystemMetricSampleAt atomic.Int64
+var systemMetricSampleMutex sync.Mutex
 
 type SystemInstanceInfo struct {
 	SchemaVersion int                       `json:"schema_version"`
@@ -47,12 +55,19 @@ type SystemInstanceHostInfo struct {
 
 type SystemInstanceResources struct {
 	CPU     SystemInstanceResourceUsage  `json:"cpu"`
-	Memory  SystemInstanceResourceUsage  `json:"memory"`
+	Memory  SystemInstanceMemoryMetrics  `json:"memory"`
 	Storage SystemInstanceStorageMetrics `json:"storage"`
 }
 
 type SystemInstanceResourceUsage struct {
 	UsagePercent float64 `json:"usage_percent"`
+}
+
+type SystemInstanceMemoryMetrics struct {
+	UsagePercent   float64 `json:"usage_percent"`
+	TotalBytes     uint64  `json:"total_bytes"`
+	UsedBytes      uint64  `json:"used_bytes"`
+	AvailableBytes uint64  `json:"available_bytes"`
 }
 
 type SystemInstanceStorageMetrics struct {
@@ -88,8 +103,10 @@ func ReportCurrentSystemInstance() error {
 		identity.ManuallyConfigured = false
 		identity.ShouldConfigureManually = true
 	}
-	systemStatus := common.GetSystemStatus()
-	diskInfo := common.GetDiskSpaceInfo()
+	snapshot := common.GetSystemResourceSnapshot()
+	systemStatus := snapshot.Status
+	diskInfo := snapshot.Disk
+	now := common.GetTimestamp()
 	info := SystemInstanceInfo{
 		SchemaVersion: 1,
 		Node:          identity,
@@ -109,8 +126,11 @@ func ReportCurrentSystemInstance() error {
 			CPU: SystemInstanceResourceUsage{
 				UsagePercent: systemStatus.CPUUsage,
 			},
-			Memory: SystemInstanceResourceUsage{
-				UsagePercent: systemStatus.MemoryUsage,
+			Memory: SystemInstanceMemoryMetrics{
+				UsagePercent:   systemStatus.MemoryUsage,
+				TotalBytes:     snapshot.MemoryTotal,
+				UsedBytes:      snapshot.MemoryUsed,
+				AvailableBytes: snapshot.MemoryAvailable,
 			},
 			Storage: SystemInstanceStorageMetrics{
 				TotalBytes:  diskInfo.Total,
@@ -120,7 +140,60 @@ func ReportCurrentSystemInstance() error {
 			},
 		},
 	}
-	return model.UpsertSystemInstance(identity.Name, info, common.StartTime, common.GetTimestamp())
+	if err := model.UpsertSystemInstance(identity.Name, info, common.StartTime, now); err != nil {
+		return err
+	}
+	return recordSystemMetricSample(identity.Name, now, snapshot)
+}
+
+func recordSystemMetricSample(nodeName string, now int64, snapshot common.SystemResourceSnapshot) error {
+	if !snapshot.Valid() {
+		return nil
+	}
+	sampledAt := now - now%int64(systemMetricSampleInterval/time.Second)
+	systemMetricSampleMutex.Lock()
+	defer systemMetricSampleMutex.Unlock()
+	if lastSystemMetricSampleAt.Load() == sampledAt {
+		return nil
+	}
+
+	systemStatus := snapshot.Status
+	diskInfo := snapshot.Disk
+	metric := &model.SystemMetric{
+		NodeName:             nodeName,
+		SampledAt:            sampledAt,
+		CPUUsage:             systemStatus.CPUUsage,
+		MemoryUsage:          systemStatus.MemoryUsage,
+		MemoryTotalBytes:     snapshot.MemoryTotal,
+		MemoryUsedBytes:      snapshot.MemoryUsed,
+		MemoryAvailableBytes: snapshot.MemoryAvailable,
+		StorageUsage:         systemStatus.DiskUsage,
+		StorageTotalBytes:    diskInfo.Total,
+		StorageUsedBytes:     diskInfo.Used,
+		StorageFreeBytes:     diskInfo.Free,
+	}
+	if err := model.UpsertSystemMetric(metric); err != nil {
+		return err
+	}
+	lastSystemMetricSampleAt.Store(sampledAt)
+	cleanupSystemMetrics(now)
+	if err := evaluateSystemMetricAlert(nodeName, snapshot); err != nil {
+		logger.LogWarn(context.Background(), common.LogText("system metric alert failed: %v", err))
+	}
+	return nil
+}
+
+func cleanupSystemMetrics(now int64) {
+	lastCleanup := lastSystemMetricCleanupAt.Load()
+	if now-lastCleanup < int64(systemMetricCleanupCheckInterval/time.Second) {
+		return
+	}
+	if !lastSystemMetricCleanupAt.CompareAndSwap(lastCleanup, now) {
+		return
+	}
+	if err := model.DeleteSystemMetricsBefore(now - model.SystemMetricRetentionSeconds); err != nil {
+		logger.LogWarn(context.Background(), common.LogText("system metric cleanup failed: %v", err))
+	}
 }
 
 func reportSystemInstanceWithLog() {

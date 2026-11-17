@@ -57,7 +57,6 @@ import { LOG_TYPE_ALL_VALUE } from '../../constants'
 import type { UsageLog } from '../../data/schema'
 import {
   formatModelName,
-  formatCacheHitRate,
   decodeBillingExprB64,
   getTieredBillingSummary,
   hasAnyCacheTokens,
@@ -75,6 +74,7 @@ import {
   isPerCallBilling,
 } from '../../lib/utils'
 import type { LogOtherData } from '../../types'
+import { CacheHitRate } from '../cache-hit-rate'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { LogCostDisplay } from '../log-cost-display'
 import { ModelBadge } from '../model-badge'
@@ -742,7 +742,6 @@ export function useCommonLogsColumns(
           }
 
           const cacheReadTokens = other?.cache_tokens || 0
-          const cacheHitRate = formatCacheHitRate(promptTokens, cacheReadTokens)
 
           const cacheWriteTokens = getCacheWriteTokens(other)
 
@@ -753,19 +752,21 @@ export function useCommonLogsColumns(
                 {completionTokens.toLocaleString()}
               </span>
               {(cacheReadTokens > 0 || cacheWriteTokens > 0) && (
-                <div className='flex items-center gap-1 text-[11px]'>
+                <div className='text-muted-foreground flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px]'>
                   {cacheReadTokens > 0 && (
-                    <span className='text-muted-foreground/60'>
+                    <span className='whitespace-nowrap'>
                       {t('Cache')}↓ {cacheReadTokens.toLocaleString()}
                     </span>
                   )}
-                  {cacheHitRate && (
-                    <span className='text-muted-foreground/60'>
-                      {t('Cache hit rate')} {cacheHitRate}
-                    </span>
-                  )}
+                  <CacheHitRate
+                    promptTokens={promptTokens}
+                    cacheReadTokens={cacheReadTokens}
+                    cacheWriteTokens={cacheWriteTokens}
+                    isClaude={other?.claude}
+                    inputTokensTotal={other?.input_tokens_total}
+                  />
                   {cacheWriteTokens > 0 && (
-                    <span className='text-muted-foreground/60'>
+                    <span className='whitespace-nowrap'>
                       ↑ {cacheWriteTokens.toLocaleString()}
                     </span>
                   )}

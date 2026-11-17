@@ -349,8 +349,23 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if err != nil {
 		return err
 	}
+	performanceValues := make(map[string]string)
 	for k, v := range values {
+		if configKey, ok := strings.CutPrefix(k, "performance_setting."); ok {
+			performanceValues[configKey] = v
+			continue
+		}
 		if err := updateOptionMap(k, v); err != nil {
+			return err
+		}
+	}
+	if len(performanceValues) > 0 {
+		common.OptionMapRWMutex.Lock()
+		for configKey, value := range performanceValues {
+			common.OptionMap["performance_setting."+configKey] = value
+		}
+		common.OptionMapRWMutex.Unlock()
+		if err := performance_setting.UpdateFromMap(performanceValues); err != nil {
 			return err
 		}
 	}
@@ -731,15 +746,18 @@ func handleConfigUpdate(key, value string) bool {
 	}
 
 	// 更新配置
+	if configName == "performance_setting" {
+		_ = performance_setting.UpdateFromMap(map[string]string{configKey: value})
+		return true
+	}
+
 	configMap := map[string]string{
 		configKey: value,
 	}
 	config.UpdateConfigFromMap(cfg, configMap)
 
 	// 特定配置的后处理
-	if configName == "performance_setting" {
-		performance_setting.UpdateAndSync()
-	} else if configName == "billing_setting" {
+	if configName == "billing_setting" {
 		InvalidatePricingCache()
 		ratio_setting.InvalidateExposedDataCache()
 	}

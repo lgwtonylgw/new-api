@@ -91,3 +91,33 @@ export type SystemTaskHistoryDeleteResponse = {
   message: string
   data?: { deleted_count: number }
 }
+
+export type SystemMetricRange = '1h' | '6h' | '24h' | '7d' | '30d'
+
+export type SystemMetricSample = {
+  sampled_at: number
+  cpu_usage: number
+  memory_usage: number
+  memory_total_bytes: number
+  memory_used_bytes: number
+  memory_available_bytes: number
+  storage_usage: number
+  storage_total_bytes: number
+  storage_used_bytes: number
+  storage_free_bytes: number
+}
+
+export type SystemMetricHistory = {
+  node_name: string
+  range: SystemMetricRange
+  sample_interval_seconds: number
+  bucket_seconds: number
+  retention_days: number
+  samples: SystemMetricSample[]
+}
+
+export type SystemMetricHistoryResponse = {
+  success: boolean
+  message: string
+  data?: SystemMetricHistory
+}

@@ -33,8 +33,8 @@ import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 
 import type { UsageLog } from '../data/schema'
 import {
-  formatCacheHitRate,
   formatModelName,
+  getCacheWriteTokens,
   logTokenName,
   parseLogOther,
 } from '../lib/format'
@@ -43,6 +43,7 @@ import {
   isDisplayableLogType,
   isTimingLogType,
 } from '../lib/utils'
+import { CacheHitRate } from './cache-hit-rate'
 import { ModelBadge, ResponseModelDetails } from './model-badge'
 import { StreamTpsCell, TimingMetricsCell } from './timing-metrics-cell'
 import { useUsageLogsContext } from './usage-logs-provider'
@@ -133,12 +134,7 @@ export function CommonLogMobileCard<TData>(props: {
   const contentCell = props.cells.get('content')
   const channelCell = props.cells.get('channel')
   const cacheRead = other?.cache_tokens || 0
-  const cacheHitRate = formatCacheHitRate(log.prompt_tokens, cacheRead)
-  const cacheWrite =
-    (other?.cache_creation_tokens_5m || 0) +
-      (other?.cache_creation_tokens_1h || 0) ||
-    other?.cache_creation_tokens ||
-    0
+  const cacheWrite = getCacheWriteTokens(other)
   const showTokens =
     displayable &&
     props.cells.has('prompt_tokens') &&
@@ -313,11 +309,13 @@ export function CommonLogMobileCard<TData>(props: {
               {t('Cache')} ↓ {cacheRead.toLocaleString()}
             </span>
           )}
-          {cacheHitRate && (
-            <span>
-              {t('Cache hit rate')} {cacheHitRate}
-            </span>
-          )}
+          <CacheHitRate
+            promptTokens={log.prompt_tokens}
+            cacheReadTokens={cacheRead}
+            cacheWriteTokens={cacheWrite}
+            isClaude={other?.claude}
+            inputTokensTotal={other?.input_tokens_total}
+          />
           {cacheWrite > 0 && (
             <span>
               {t('Cache')} ↑ {cacheWrite.toLocaleString()}

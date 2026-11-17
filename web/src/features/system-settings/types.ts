@@ -39,6 +39,20 @@ export type UpdateOptionResponse = {
   message: string
 }
 
+export type PerformanceOptionsUpdateRequest = {
+  disk_cache_enabled: boolean
+  disk_cache_threshold_mb: number
+  disk_cache_max_size_mb: number
+  disk_cache_path: string
+  monitor_enabled: boolean
+  monitor_cpu_threshold: number
+  monitor_memory_threshold: number
+  monitor_disk_threshold: number
+  monitor_alert_enabled: boolean
+  monitor_telegram_bot_token: string
+  monitor_telegram_chat_id: string
+}
+
 export interface PasskeyDomainChange {
   rp_id: string
   legacy_rp_ids: string
@@ -402,6 +416,9 @@ export type OperationsSettings = {
   'performance_setting.monitor_cpu_threshold': number
   'performance_setting.monitor_memory_threshold': number
   'performance_setting.monitor_disk_threshold': number
+  'performance_setting.monitor_alert_enabled': boolean
+  'performance_setting.monitor_telegram_bot_token': string
+  'performance_setting.monitor_telegram_chat_id': string
   'perf_metrics_setting.enabled': boolean
   'perf_metrics_setting.flush_interval': number
   'perf_metrics_setting.bucket_time': 'hour' | 'minute' | '5min'

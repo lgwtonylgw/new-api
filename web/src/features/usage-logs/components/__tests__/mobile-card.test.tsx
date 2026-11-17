@@ -337,3 +337,63 @@ it('shows loading placeholders without displaying stale log fields', () => {
     screen.queryByRole('button', { name: /^Model:/ })
   ).not.toBeInTheDocument()
 })
+
+it('explains the per-request cache rate when tapped', async () => {
+  const user = userEvent.setup()
+  renderLogs()
+  const trigger = screen.getByRole('button', {
+    name: 'Input cache hit rate: 25.0%',
+  })
+  expect(trigger).toHaveTextContent('Hit 25.0%')
+  await user.click(trigger)
+  const dialog = await screen.findByRole('dialog')
+  expect(within(dialog).getByText('Input cache hit rate')).toBeVisible()
+  expect(
+    within(dialog).getByText(
+      'Cached input tokens divided by total input tokens for this request.'
+    )
+  ).toBeVisible()
+  expect(
+    within(dialog).getByText(
+      'Cache hit rate is not the percentage of cost saved. Charges depend on the model cache pricing.'
+    )
+  ).toBeVisible()
+  await user.keyboard('{Escape}')
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  )
+  trigger.focus()
+  await user.keyboard('{Enter}')
+  expect(await screen.findByRole('dialog')).toBeVisible()
+})
+
+it.each([0, 1201])(
+  'hides an unavailable or inconsistent cache rate (%s)',
+  (cacheTokens) => {
+    renderLogs({
+      logs: [{ ...log, other: JSON.stringify({ cache_tokens: cacheTokens }) }],
+    })
+    expect(
+      screen.queryByRole('button', { name: /Input cache hit rate/ })
+    ).not.toBeInTheDocument()
+  }
+)
+
+it('uses total Claude input when calculating the cache hit rate', () => {
+  renderLogs({
+    logs: [
+      {
+        ...log,
+        prompt_tokens: 100,
+        other: JSON.stringify({
+          claude: true,
+          cache_tokens: 900,
+          cache_write_tokens: 100,
+        }),
+      },
+    ],
+  })
+  expect(
+    screen.getByRole('button', { name: 'Input cache hit rate: 81.8%' })
+  ).toBeVisible()
+})

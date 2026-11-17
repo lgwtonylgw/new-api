@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
@@ -35,16 +36,17 @@ var completionRatioMetaOptionKeys = []string{
 }
 
 var adminVisibleCredentialOptionKeys = map[string]struct{}{
-	"GitHubClientSecret":     {},
-	"discord.client_secret":  {},
-	"oidc.client_secret":     {},
-	"telegram.client_secret": {},
-	"TelegramBotToken":       {},
-	"LinuxDOClientSecret":    {},
-	"WeChatCallbackToken":    {},
-	"WeChatEncodingAESKey":   {},
-	"WeChatServerToken":      {},
-	"SMTPToken":              {},
+	"GitHubClientSecret":                            {},
+	"discord.client_secret":                         {},
+	"oidc.client_secret":                            {},
+	"telegram.client_secret":                        {},
+	"TelegramBotToken":                              {},
+	"performance_setting.monitor_telegram_bot_token": {},
+	"LinuxDOClientSecret":                           {},
+	"WeChatCallbackToken":                           {},
+	"WeChatEncodingAESKey":                          {},
+	"WeChatServerToken":                             {},
+	"SMTPToken":                                     {},
 }
 
 func isAdminVisibleCredentialOptionKey(key string) bool {
@@ -112,6 +114,7 @@ func GetOptions(c *gin.Context) {
 			value = operation_setting.PayMethods2JsonString()
 		}
 		isSensitiveKey := strings.HasSuffix(k, "Token") ||
+			strings.HasSuffix(k, "token") ||
 			strings.HasSuffix(k, "Secret") ||
 			strings.HasSuffix(k, "Key") ||
 			strings.HasSuffix(k, "secret") ||
@@ -160,6 +163,64 @@ func GetOptions(c *gin.Context) {
 type OptionUpdateRequest struct {
 	Key   string `json:"key"`
 	Value any    `json:"value"`
+}
+
+type PerformanceOptionsUpdateRequest struct {
+	DiskCacheEnabled        bool   `json:"disk_cache_enabled"`
+	DiskCacheThresholdMB    int    `json:"disk_cache_threshold_mb"`
+	DiskCacheMaxSizeMB      int    `json:"disk_cache_max_size_mb"`
+	DiskCachePath           string `json:"disk_cache_path"`
+	MonitorEnabled          bool   `json:"monitor_enabled"`
+	MonitorCPUThreshold     int    `json:"monitor_cpu_threshold"`
+	MonitorMemoryThreshold  int    `json:"monitor_memory_threshold"`
+	MonitorDiskThreshold    int    `json:"monitor_disk_threshold"`
+	MonitorAlertEnabled     bool   `json:"monitor_alert_enabled"`
+	MonitorTelegramBotToken string `json:"monitor_telegram_bot_token"`
+	MonitorTelegramChatID   string `json:"monitor_telegram_chat_id"`
+}
+
+func UpdatePerformanceOptions(c *gin.Context) {
+	var request PerformanceOptionsUpdateRequest
+	if err := common.DecodeJson(c.Request.Body, &request); err != nil {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
+		return
+	}
+	if request.DiskCacheThresholdMB < 1 || request.DiskCacheMaxSizeMB < 100 {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid disk cache settings"))
+		return
+	}
+	if request.MonitorCPUThreshold < 0 || request.MonitorCPUThreshold > 100 ||
+		request.MonitorMemoryThreshold < 0 || request.MonitorMemoryThreshold > 100 ||
+		request.MonitorDiskThreshold < 0 || request.MonitorDiskThreshold > 100 {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Monitor thresholds must be between 0 and 100"))
+		return
+	}
+	request.MonitorTelegramBotToken = strings.TrimSpace(request.MonitorTelegramBotToken)
+	request.MonitorTelegramChatID = strings.TrimSpace(request.MonitorTelegramChatID)
+	if err := service.ValidateSystemMetricAlertSettings(request.MonitorAlertEnabled, request.MonitorTelegramBotToken, request.MonitorTelegramChatID); err != nil {
+		common.ApiErrorStatus(c, http.StatusBadRequest, err)
+		return
+	}
+
+	values := map[string]string{
+		"performance_setting.disk_cache_enabled":        strconv.FormatBool(request.DiskCacheEnabled),
+		"performance_setting.disk_cache_threshold_mb":   strconv.Itoa(request.DiskCacheThresholdMB),
+		"performance_setting.disk_cache_max_size_mb":    strconv.Itoa(request.DiskCacheMaxSizeMB),
+		"performance_setting.disk_cache_path":           request.DiskCachePath,
+		"performance_setting.monitor_enabled":           strconv.FormatBool(request.MonitorEnabled),
+		"performance_setting.monitor_cpu_threshold":     strconv.Itoa(request.MonitorCPUThreshold),
+		"performance_setting.monitor_memory_threshold":  strconv.Itoa(request.MonitorMemoryThreshold),
+		"performance_setting.monitor_disk_threshold":    strconv.Itoa(request.MonitorDiskThreshold),
+		"performance_setting.monitor_alert_enabled":      strconv.FormatBool(request.MonitorAlertEnabled),
+		"performance_setting.monitor_telegram_bot_token": request.MonitorTelegramBotToken,
+		"performance_setting.monitor_telegram_chat_id":   request.MonitorTelegramChatID,
+	}
+	if err := model.UpdateOptionsBulk(values); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "option.performance.update", map[string]any{"keys": len(values)})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
 }
 
 func UpdatePasskeyDomains(c *gin.Context) {
@@ -246,6 +307,32 @@ func UpdateOption(c *gin.Context) {
 	if option.Key == "TaskPublicAddress" && option.Value.(string) != "" {
 		if err := service.ValidateTaskArtifactBaseURL(option.Value.(string)); err != nil {
 			common.ApiError(c, err)
+			return
+		}
+	}
+	if option.Key == "performance_setting.monitor_alert_enabled" ||
+		option.Key == "performance_setting.monitor_telegram_bot_token" ||
+		option.Key == "performance_setting.monitor_telegram_chat_id" {
+		setting := performance_setting.GetPerformanceSettingSnapshot()
+		enabled := setting.MonitorAlertEnabled
+		botToken := setting.MonitorTelegramBotToken
+		chatID := setting.MonitorTelegramChatID
+		if option.Key == "performance_setting.monitor_alert_enabled" {
+			parsed, parseErr := strconv.ParseBool(option.Value.(string))
+			if parseErr != nil {
+				common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
+				return
+			}
+			enabled = parsed
+		} else if option.Key == "performance_setting.monitor_telegram_bot_token" {
+			botToken = strings.TrimSpace(option.Value.(string))
+			option.Value = botToken
+		} else {
+			chatID = strings.TrimSpace(option.Value.(string))
+			option.Value = chatID
+		}
+		if err := service.ValidateSystemMetricAlertSettings(enabled, botToken, chatID); err != nil {
+			common.ApiErrorStatus(c, http.StatusBadRequest, err)
 			return
 		}
 	}

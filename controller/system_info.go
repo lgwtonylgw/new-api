@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -62,4 +63,37 @@ func DeleteStaleSystemInstance(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{
 		"deleted_count": 1,
 	})
+}
+
+func GetSystemMetricHistory(c *gin.Context) {
+	history, err := service.GetSystemMetricHistory(c.Query("node_name"), c.DefaultQuery("range", "24h"))
+	if err != nil {
+		common.ApiErrorStatus(c, http.StatusBadRequest, err)
+		return
+	}
+	common.ApiSuccess(c, history)
+}
+
+type telegramAlertTestRequest struct {
+	BotToken string `json:"bot_token"`
+	ChatID   string `json:"chat_id"`
+}
+
+func TestSystemMetricTelegramAlert(c *gin.Context) {
+	var request telegramAlertTestRequest
+	if err := common.DecodeJson(c.Request.Body, &request); err != nil {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
+		return
+	}
+	request.BotToken = strings.TrimSpace(request.BotToken)
+	request.ChatID = strings.TrimSpace(request.ChatID)
+	if err := service.ValidateSystemMetricAlertSettings(true, request.BotToken, request.ChatID); err != nil {
+		common.ApiErrorStatus(c, http.StatusBadRequest, err)
+		return
+	}
+	if err := service.SendSystemMetricTestAlert(request.BotToken, request.ChatID); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"sent": true})
 }

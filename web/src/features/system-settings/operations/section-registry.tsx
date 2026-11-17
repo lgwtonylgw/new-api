@@ -129,6 +129,12 @@ const OPERATIONS_SECTIONS = [
             settings['performance_setting.monitor_memory_threshold'] ?? 90,
           'performance_setting.monitor_disk_threshold':
             settings['performance_setting.monitor_disk_threshold'] ?? 95,
+          'performance_setting.monitor_alert_enabled':
+            settings['performance_setting.monitor_alert_enabled'] ?? false,
+          'performance_setting.monitor_telegram_bot_token':
+            settings['performance_setting.monitor_telegram_bot_token'] ?? '',
+          'performance_setting.monitor_telegram_chat_id':
+            settings['performance_setting.monitor_telegram_chat_id'] ?? '',
         }}
       />
     ),
