@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
+  flexRender,
   getCoreRowModel,
   useReactTable,
   type VisibilityState,
@@ -60,6 +61,7 @@ function Fixture(props: {
   visibility?: VisibilityState
   logs?: UsageLog[]
   loading?: boolean
+  desktopTokens?: boolean
 }) {
   const columns = useCommonLogsColumns(props.admin ?? true, false)
   const context = useUsageLogsContext()
@@ -69,6 +71,14 @@ function Fixture(props: {
     getCoreRowModel: getCoreRowModel(),
     state: { columnVisibility: props.visibility ?? {} },
   })
+  if (props.desktopTokens) {
+    const cell = table
+      .getRowModel()
+      .rows[0].getAllCells()
+      .find((item) => item.column.id === 'prompt_tokens')
+    if (!cell) throw new Error('The log must have a tokens column')
+    return flexRender(cell.column.columnDef.cell, cell.getContext())
+  }
   return (
     <>
       <button type='button' onClick={() => context.setSensitiveVisible(false)}>
@@ -366,6 +376,20 @@ it('explains the per-request cache rate when tapped', async () => {
   await user.keyboard('{Enter}')
   expect(await screen.findByRole('dialog')).toBeVisible()
 })
+
+it.each([false, true])(
+  'keeps the cache rate and cache token counts on one line (desktop: %s)',
+  (desktopTokens) => {
+    renderLogs({ desktopTokens })
+    const rate = screen.getByRole('button', {
+      name: 'Input cache hit rate: 25.0%',
+    })
+    const cacheRow = rate.closest('[data-slot="log-cache-tokens"]')
+    expect(cacheRow).toHaveClass('flex-nowrap', 'whitespace-nowrap')
+    expect(cacheRow).toHaveTextContent('300')
+    expect(cacheRow).toHaveTextContent('200')
+  }
+)
 
 it.each([0, 1201])(
   'hides an unavailable or inconsistent cache rate (%s)',

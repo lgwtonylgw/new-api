@@ -752,7 +752,10 @@ export function useCommonLogsColumns(
                 {completionTokens.toLocaleString()}
               </span>
               {(cacheReadTokens > 0 || cacheWriteTokens > 0) && (
-                <div className='text-muted-foreground flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px]'>
+                <div
+                  data-slot='log-cache-tokens'
+                  className='text-muted-foreground flex w-max flex-nowrap items-center gap-1 text-[11px] whitespace-nowrap'
+                >
                   {cacheReadTokens > 0 && (
                     <span className='whitespace-nowrap'>
                       {t('Cache')}↓ {cacheReadTokens.toLocaleString()}

@@ -36,7 +36,7 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 	if isEpusdtTopUpEnabled() {
-		payMethods = append(payMethods, map[string]string{"name": "USDT-TRC20", "type": model.PaymentMethodEpusdtTRC20, "icon": "SiTether"})
+		payMethods = append(payMethods, map[string]string{"name": "USDT", "type": model.PaymentMethodEpusdtTRC20, "icon": "SiTether"})
 	}
 
 	// 如果启用了 Stripe 支付，添加到支付方法列表

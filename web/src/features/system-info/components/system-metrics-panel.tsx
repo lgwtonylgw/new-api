@@ -58,7 +58,7 @@ const RANGE_OPTIONS: Array<{ value: SystemMetricRange; label: string }> = [
 export function SystemMetricsPanel() {
   const { t, i18n } = useTranslation()
   const [nodeName, setNodeName] = useState('')
-  const [range, setRange] = useState<SystemMetricRange>('24h')
+  const [range, setRange] = useState<SystemMetricRange>('1h')
 
   const instancesQuery = useQuery({
     queryKey: ['system-info', 'instances'],

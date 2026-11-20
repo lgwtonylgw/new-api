@@ -304,21 +304,28 @@ export function CommonLogMobileCard<TData>(props: {
               {log.completion_tokens.toLocaleString()}
             </span>
           </span>
-          {cacheRead > 0 && (
-            <span>
-              {t('Cache')} ↓ {cacheRead.toLocaleString()}
-            </span>
-          )}
-          <CacheHitRate
-            promptTokens={log.prompt_tokens}
-            cacheReadTokens={cacheRead}
-            cacheWriteTokens={cacheWrite}
-            isClaude={other?.claude}
-            inputTokensTotal={other?.input_tokens_total}
-          />
-          {cacheWrite > 0 && (
-            <span>
-              {t('Cache')} ↑ {cacheWrite.toLocaleString()}
+          {(cacheRead > 0 || cacheWrite > 0) && (
+            <span
+              data-slot='log-cache-tokens'
+              className='inline-flex flex-nowrap items-center gap-1 whitespace-nowrap'
+            >
+              {cacheRead > 0 && (
+                <span>
+                  {t('Cache')} ↓ {cacheRead.toLocaleString()}
+                </span>
+              )}
+              <CacheHitRate
+                promptTokens={log.prompt_tokens}
+                cacheReadTokens={cacheRead}
+                cacheWriteTokens={cacheWrite}
+                isClaude={other?.claude}
+                inputTokensTotal={other?.input_tokens_total}
+              />
+              {cacheWrite > 0 && (
+                <span>
+                  {t('Cache')} ↑ {cacheWrite.toLocaleString()}
+                </span>
+              )}
             </span>
           )}
         </div>
