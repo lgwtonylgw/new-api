@@ -51,6 +51,8 @@ type requestDescriptor struct {
 	// BodyText is the body as JSON.stringify wrote it, for a plugin that
 	// preserves JSON order: the upstream gets the members in that order.
 	BodyText json.RawMessage `json:"-"`
+
+	multipartContentType string
 }
 
 // orderedRequestDescriptor is requestDescriptor as a plugin that preserves
@@ -122,10 +124,25 @@ func New(plugin *pluginruntime.LoadedPlugin) *TaskAdaptor { return &TaskAdaptor{
 func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo)   { a.info = info }
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
+	c.Set(pluginruntime.ContextKeyEffectiveImageRequest, nil)
 	if pinnedValue, exists := c.Get(pluginruntime.ContextKeyPinnedEndpoint); exists {
 		if pinned, ok := pinnedValue.(pluginruntime.PinnedEndpoint); ok && pinned.Plugin == a.plugin {
 			if protocolValue, present := c.Get(pluginruntime.ContextKeyProtocolRequest); present {
 				if protocolContext, valid := protocolValue.(pluginruntime.ProtocolRequestContext); valid {
+					if pinned.Protocol == pluginruntime.ProtocolOpenAIImage {
+						var err error
+						protocolContext, err = applyImageProtocolParamOverride(protocolContext, info)
+						if err != nil {
+							taskErr := service.TaskErrorWrapperLocal(err, "channel_param_override_invalid", http.StatusBadRequest)
+							taskErr.NoRetry = true
+							if fixed, ok := relaycommon.AsParamOverrideReturnError(err); ok {
+								taskErr.Code, taskErr.Message = fixed.Code, fixed.Message
+								taskErr.StatusCode, taskErr.NoRetry = fixed.StatusCode, fixed.SkipRetry
+							}
+							return taskErr
+						}
+						c.Set(pluginruntime.ContextKeyEffectiveImageRequest, protocolContext)
+					}
 					resolvedValue, requestBodyText, callErr := a.plugin.Engine.CallPathWithMemberJSON(
 						context.WithoutCancel(c.Request.Context()), 0, a.plugin.Meta.JSONTextMember("requestBody"),
 						"protocols", []string{pinned.Protocol, "decodeRequest"}, protocolContext.JSValueFor(a.plugin.Meta),
@@ -262,17 +279,17 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 	return a.submit.URL, pluginruntime.ValidateRequestURL(a.submit.URL, info.ChannelBaseUrl, a.plugin.Meta.AllowedHosts)
 }
 
-func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, _ *relaycommon.RelayInfo) error {
+func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, _ *relaycommon.RelayInfo) error {
 	if a.submit == nil {
 		return fmt.Errorf("plugin submit request was not built")
 	}
 	for name, value := range a.submit.Headers {
 		req.Header.Set(name, value)
 	}
-	// BuildRequestBody rebuilt the multipart body with a new boundary and put its
-	// Content-Type on the client request; a plugin's own Content-Type cannot match it.
-	if a.submit.BodyType == "multipart" {
-		req.Header.Set("Content-Type", c.Request.Header.Get("Content-Type"))
+	// Preserve the client headers for retries; only the upstream request uses
+	// the boundary generated for this attempt's multipart body.
+	if a.submit.multipartContentType != "" {
+		req.Header.Set("Content-Type", a.submit.multipartContentType)
 	}
 	return nil
 }
@@ -283,11 +300,7 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		return nil, err
 	}
 	if descriptor.BodyType == "multipart" {
-		form, parseErr := common.ParseMultipartFormReusable(c)
-		if parseErr != nil {
-			return nil, parseErr
-		}
-		defer form.RemoveAll()
+		var form *multipart.Form
 		var body bytes.Buffer
 		writer := multipart.NewWriter(&body)
 		for _, part := range descriptor.Parts {
@@ -306,6 +319,15 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 					return nil, err
 				}
 				continue
+			}
+			// JSON requests can produce multipart output with only text fields.
+			// Parse client uploads only when a part actually references a file.
+			if form == nil {
+				form, err = common.ParseMultipartFormReusable(c)
+				if err != nil {
+					return nil, err
+				}
+				defer form.RemoveAll()
 			}
 			field, index, validRef := pluginruntime.ParseFileReference(part.FileRef)
 			files := form.File[field]
@@ -340,7 +362,7 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		if err = writer.Close(); err != nil {
 			return nil, err
 		}
-		c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+		descriptor.multipartContentType = writer.FormDataContentType()
 		return bytes.NewReader(body.Bytes()), nil
 	}
 	if descriptor.Body == nil {
@@ -742,8 +764,69 @@ func (a *TaskAdaptor) doFetchDescriptor(baseURL, proxy string, descriptor reques
 	if err != nil {
 		return nil, err
 	}
+	// Clients are cached across channels. Keep the redirect policy and its
+	// credential state local to this query, while reusing the transport.
+	queryClient := *client
+	credentialsStripped := false
+	var redirectPolicyErr error
+	queryClient.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		if strings.EqualFold(via[len(via)-1].URL.Scheme, "https") && !strings.EqualFold(next.URL.Scheme, "https") {
+			redirectPolicyErr = fmt.Errorf("task query redirect cannot downgrade HTTPS")
+			return redirectPolicyErr
+		}
+		// Redirects use the same credential recipients as direct plugin
+		// requests: the channel base host and the plugin's allowedHosts.
+		if pluginruntime.ValidateRequestURL(next.URL.String(), baseURL, a.plugin.Meta.AllowedHosts) != nil {
+			credentialsStripped = true
+		}
+		if credentialsStripped {
+			// A 307/308 can replay credentials or private task data in the
+			// body even after the credential headers have been removed.
+			if next.Body != nil && next.Body != http.NoBody {
+				redirectPolicyErr = fmt.Errorf("task query redirect cannot replay a body to an origin without credential authorization")
+				return redirectPolicyErr
+			}
+			// Plugin and channel headers can use arbitrary credential names.
+			// Keep only representation preferences, and do this on every
+			// later hop: net/http copies headers from the initial request.
+			for name := range next.Header {
+				switch http.CanonicalHeaderKey(name) {
+				case "Accept", "Accept-Language":
+				default:
+					delete(next.Header, name)
+				}
+			}
+			next.Host = ""
+			next.URL.User = nil
+		} else {
+			// net/http may have already removed standard credentials for a
+			// different domain. Restore them only along an authorized chain;
+			// crossing an untrusted origin can never restore credentials later.
+			for _, name := range []string{"Authorization", "Www-Authenticate", "Cookie", "Cookie2", "Proxy-Authorization", "Proxy-Authenticate"} {
+				if values, ok := req.Header[name]; ok {
+					next.Header[name] = slices.Clone(values)
+				}
+			}
+		}
+		if client.CheckRedirect != nil {
+			if err := client.CheckRedirect(next, via); err != nil {
+				if err == http.ErrUseLastResponse {
+					return err
+				}
+				// The shared SSRF policy includes the target URL in errors.
+				// Keep its diagnostic reason without exposing signed URLs.
+				redirectPolicyErr = errors.New(strings.ReplaceAll(err.Error(), next.URL.String(), next.URL.Scheme+"://"+next.URL.Host))
+				return redirectPolicyErr
+			}
+			return nil
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
+		return service.ValidateSSRFProtectedFetchURL(next.URL.String())
+	}
 	started := time.Now()
-	resp, err := client.Do(req)
+	resp, err := queryClient.Do(req)
 	if err != nil {
 		logger.LogDebug(
 			context.Background(),
@@ -752,6 +835,11 @@ func (a *TaskAdaptor) doFetchDescriptor(baseURL, proxy string, descriptor reques
 			method,
 			time.Since(started).Milliseconds(),
 		)
+		if redirectPolicyErr != nil {
+			// net/http wraps redirect errors with the Location URL, which
+			// may contain credentials. Polling logs only the policy reason.
+			return nil, redirectPolicyErr
+		}
 		return nil, err
 	}
 	logger.LogDebug(

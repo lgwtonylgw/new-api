@@ -270,11 +270,11 @@ type InputTokenDetails struct {
 	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
 	// Some OpenAI-compatible providers report cache writes under this name.
 	// These tokens are already included in the total input token count.
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	CacheWriteTokensDetails *CacheWriteTokenDetails `json:"cache_write_tokens_details,omitempty"`
-	TextTokens              int                     `json:"text_tokens"`
-	AudioTokens             int                     `json:"audio_tokens"`
-	ImageTokens             int                     `json:"image_tokens"`
+	CacheCreationInputTokens int                     `json:"cache_creation_input_tokens,omitempty"`
+	CacheWriteTokensDetails  *CacheWriteTokenDetails `json:"cache_write_tokens_details,omitempty"`
+	TextTokens               int                     `json:"text_tokens"`
+	AudioTokens              int                     `json:"audio_tokens"`
+	ImageTokens              int                     `json:"image_tokens"`
 }
 
 // CacheWriteTokenDetails splits writes by cache lifetime.
@@ -329,10 +329,14 @@ func (d InputTokenDetails) Clone() InputTokenDetails {
 // which field the upstream reported it in: Claude-derived conversions use
 // CachedCreationTokens, OpenAI uses CacheWriteTokens, and compatible providers
 // may use CacheCreationInputTokens or only the lifetime breakdown. The maximum
-// avoids counting a write twice. Negative upstream values cannot lower the
-// charge.
+// scalar alias avoids counting a write twice. Lifetime subsets cannot increase
+// a positive reported total; their sum is only a fallback when no positive
+// scalar total is available. Negative upstream values cannot lower the charge.
 func (d InputTokenDetails) CacheCreationTokensTotal() int {
-	total := max(d.CacheWriteTokens, d.CachedCreationTokens, d.CacheCreationInputTokens)
+	total := max(d.CacheWriteTokens, d.CachedCreationTokens, d.CacheCreationInputTokens, 0)
+	if total > 0 {
+		return total
+	}
 	if d.CacheWriteTokensDetails != nil {
 		ttl30m := max(d.CacheWriteTokensDetails.TTL30mTokens, 0)
 		ttl12h := max(d.CacheWriteTokensDetails.TTL12hTokens, 0)

@@ -23,17 +23,24 @@ import (
 func TestConvertImageEditRequestMultipart(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	newMultipartContext := func(t *testing.T, prompt string) *gin.Context {
+	newMultipartContext := func(t *testing.T, prompt, filenameSuffix string) *gin.Context {
 		var body bytes.Buffer
 		writer := multipart.NewWriter(&body)
 		require.NoError(t, writer.WriteField("model", "gpt-image-1"))
 		require.NoError(t, writer.WriteField("prompt", prompt))
 		require.NoError(t, writer.WriteField("stream", "true"))
 		require.NoError(t, writer.WriteField("partial_images", "3"))
-		part, err := writer.CreateFormFile("image", "input.png")
+		part, err := writer.CreateFormFile("image", "input"+filenameSuffix)
 		require.NoError(t, err)
 		_, err = part.Write([]byte("fake image"))
 		require.NoError(t, err)
+		require.NoError(t, writer.WriteField("complexity", "low"))
+		for _, name := range []string{"mask", "markup"} {
+			part, err := writer.CreateFormFile(name, name+filenameSuffix)
+			require.NoError(t, err)
+			_, err = part.Write([]byte("fake " + name))
+			require.NoError(t, err)
+		}
 		require.NoError(t, writer.Close())
 
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
@@ -42,7 +49,7 @@ func TestConvertImageEditRequestMultipart(t *testing.T) {
 		return c
 	}
 
-	convertAndReplay := func(t *testing.T, c *gin.Context, prompt string) {
+	convertAndReplay := func(t *testing.T, c *gin.Context, prompt, filenameSuffix string) {
 		info := &relaycommon.RelayInfo{
 			RelayMode: relayconstant.RelayModeImagesEdits,
 		}
@@ -66,6 +73,14 @@ func TestConvertImageEditRequestMultipart(t *testing.T) {
 		require.Equal(t, "true", replayedRequest.PostForm.Get("stream"))
 		require.Equal(t, "3", replayedRequest.PostForm.Get("partial_images"))
 		require.Len(t, replayedRequest.MultipartForm.File["image"], 1)
+		require.Equal(t, "low", replayedRequest.PostForm.Get("complexity"))
+		require.Len(t, replayedRequest.MultipartForm.File["mask"], 1)
+		require.Len(t, replayedRequest.MultipartForm.File["markup"], 1)
+		require.Equal(t, "input"+filenameSuffix, replayedRequest.MultipartForm.File["image"][0].Filename)
+		for _, name := range []string{"mask", "markup"} {
+			require.Equal(t, name+filenameSuffix, replayedRequest.MultipartForm.File[name][0].Filename)
+		}
+		t.Cleanup(func() { require.NoError(t, replayedRequest.MultipartForm.RemoveAll()) })
 
 		file, err := replayedRequest.MultipartForm.File["image"][0].Open()
 		require.NoError(t, err)
@@ -77,15 +92,15 @@ func TestConvertImageEditRequestMultipart(t *testing.T) {
 
 	t.Run("with pre-parsed form", func(t *testing.T) {
 		prompt := "edit this image"
-		c := newMultipartContext(t, prompt)
+		c := newMultipartContext(t, prompt, ".png")
 		require.NoError(t, c.Request.ParseMultipartForm(32<<20))
 
-		convertAndReplay(t, c, prompt)
+		convertAndReplay(t, c, prompt, ".png")
 	})
 
 	t.Run("re-parses reusable body when form is missing", func(t *testing.T) {
 		prompt := "edit without pre-parsed form"
-		c := newMultipartContext(t, prompt)
+		c := newMultipartContext(t, prompt, ".png")
 
 		storage, err := common.GetBodyStorage(c)
 		require.NoError(t, err)
@@ -93,6 +108,13 @@ func TestConvertImageEditRequestMultipart(t *testing.T) {
 		c.Request.MultipartForm = nil
 		c.Request.PostForm = nil
 
-		convertAndReplay(t, c, prompt)
+		convertAndReplay(t, c, prompt, ".png")
+	})
+
+	t.Run("quoted filenames survive multipart reconstruction", func(t *testing.T) {
+		const suffix = `"quoted".png`
+		prompt := "edit with a quoted filename"
+		c := newMultipartContext(t, prompt, suffix)
+		convertAndReplay(t, c, prompt, suffix)
 	})
 }

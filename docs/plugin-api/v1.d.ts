@@ -72,7 +72,7 @@ export declare const native: Record<string, ((ctx: NativeDecodeContext) => TaskI
 export declare const protocols: {
   openai_responses?: {decodeRequest(ctx: ProtocolDecodeContext): SubmitIntent; renderEvents?(ctx: unknown, task: TaskView, previousState: unknown): unknown; renderFinal?(ctx: unknown, task: TaskView): unknown};
   openai_video?: {decodeRequest(ctx: ProtocolDecodeContext): SubmitIntent; render(ctx: unknown, task: TaskView): unknown};
-  /** render returns the OpenAI ImageResponse; the host adds `created` when absent and resolves response_format b64_json. */
+  /** The final decode and render receive the current channel's parameter overrides. render returns the OpenAI ImageResponse; the host adds `created` when absent and resolves the effective response_format b64_json. */
   openai_image?: {decodeRequest(ctx: ProtocolDecodeContext): SubmitIntent; render(ctx: unknown, task: TaskView): {created?: number; data: readonly ImageResponseEntry[]} & Record<string, unknown>};
 };
 export declare function buildSubmitRequest(ctx: DriverContext): RequestDescriptor;
@@ -86,6 +86,7 @@ export interface SubmitEventDeltaResult {changes: readonly JSONChange[]; state: 
 export declare function parseSubmitEventDelta(ctx: DriverContext, event: SubmitEvent, previousState: JSONValue | null): SubmitEventDeltaResult;
 export declare function parseSubmitEvent(ctx: DriverContext, event: SubmitEvent, previousState: JSONValue | null): {state: JSONValue; done: boolean};
 export declare function parseSubmitResponse(ctx: DriverContext, response: UpstreamResponse): {taskId: string; taskData?: unknown; immediate?: NormalizedTaskResult; state?: unknown};
+/** Query redirects retain credentials only within the channel host and meta.allowedHosts; SSRF checks and HTTPS downgrade protection still apply. */
 export declare function buildQueryRequest(ctx: TaskQueryContext): RequestDescriptor;
 export declare function buildBatchQueryRequest(ctx: BatchQueryContext, tasks: readonly TaskQueryContext[]): RequestDescriptor;
 export declare function parseTaskResult(ctx: TaskQueryContext, body: unknown, response: HookHTTPResponse): NormalizedTaskResult;

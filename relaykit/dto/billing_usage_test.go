@@ -103,8 +103,23 @@ func TestCacheWriteTTLDetailsSurviveUsageSnapshots(t *testing.T) {
 	assert.Contains(t, string(encoded), `"cache_write_tokens_details":{"ttl_30m_tokens":3000,"ttl_12h_tokens":4000}`)
 
 	// Billing never takes more 12h writes than the reported write total.
-	assert.Equal(t, 7000, InputTokenDetails{CacheWriteTokens: 7000, CacheWriteTokensDetails: &CacheWriteTokenDetails{TTL12hTokens: 9000}}.CacheWrite12hTokens())
-	assert.Zero(t, InputTokenDetails{CacheWriteTokens: 7000, CacheWriteTokensDetails: &CacheWriteTokenDetails{TTL12hTokens: -1}}.CacheWrite12hTokens())
+	for _, tc := range []struct {
+		name        string
+		details     InputTokenDetails
+		total, long int
+	}{
+		{name: "native total bounds lifetime subsets", details: InputTokenDetails{CacheWriteTokens: 7000, CacheWriteTokensDetails: &CacheWriteTokenDetails{TTL12hTokens: 9000}}, total: 7000, long: 7000},
+		{name: "negative lifetime ignored", details: InputTokenDetails{CacheWriteTokens: 7000, CacheWriteTokensDetails: &CacheWriteTokenDetails{TTL12hTokens: -1}}, total: 7000},
+		{name: "compatible total bounds lifetime subsets", details: InputTokenDetails{CacheCreationInputTokens: 7000, CacheWriteTokensDetails: &CacheWriteTokenDetails{TTL12hTokens: 9000}}, total: 7000, long: 7000},
+		{name: "converted total bounds lifetime subsets", details: InputTokenDetails{CachedCreationTokens: 7000, CacheWriteTokensDetails: &CacheWriteTokenDetails{TTL30mTokens: 3000, TTL12hTokens: 9000}}, total: 7000, long: 7000},
+		{name: "largest scalar alias remains authoritative", details: InputTokenDetails{CacheWriteTokens: 7000, CachedCreationTokens: 8000, CacheWriteTokensDetails: &CacheWriteTokenDetails{TTL12hTokens: 9000}}, total: 8000, long: 8000},
+		{name: "smaller subsets retain the reported total", details: InputTokenDetails{CacheWriteTokens: 7000, CacheWriteTokensDetails: &CacheWriteTokenDetails{TTL30mTokens: 1000, TTL12hTokens: 4000}}, total: 7000, long: 4000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.total, tc.details.CacheCreationTokensTotal())
+			assert.Equal(t, tc.long, tc.details.CacheWrite12hTokens())
+		})
+	}
 
 	// Some compatible providers report only the lifetime breakdown. It is still
 	// a complete cache-write total and must remain billable.

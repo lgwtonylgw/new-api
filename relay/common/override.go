@@ -95,6 +95,19 @@ func (e *ParamOverrideReturnError) Error() string {
 	return e.Message
 }
 
+// ParamOverrideRequestValueError distinguishes a request value with the wrong
+// type from an invalid override rule configured on the channel.
+type ParamOverrideRequestValueError struct {
+	Path string
+	Err  error
+}
+
+func (e *ParamOverrideRequestValueError) Error() string {
+	return fmt.Sprintf("comparison failed for path %s: %v", e.Path, e.Err)
+}
+
+func (e *ParamOverrideRequestValueError) Unwrap() error { return e.Err }
+
 func AsParamOverrideReturnError(err error) (*ParamOverrideReturnError, bool) {
 	if err == nil {
 		return nil, false
@@ -674,6 +687,11 @@ func checkSingleCondition(data []byte, contextJSON string, condition *ConditionO
 
 	result, err := condition.compareGjsonValues(value, targetValue)
 	if err != nil {
+		var valueErr *ParamOverrideRequestValueError
+		if errors.As(err, &valueErr) {
+			valueErr.Path = condition.Path
+			return false, valueErr
+		}
 		return false, fmt.Errorf("comparison failed for path %s: %v", condition.Path, err)
 	}
 
@@ -764,7 +782,7 @@ func compareEqual(jsonValue, targetValue gjson.Result) (bool, error) {
 
 	// 如果类型不同，报错
 	if jsonValue.Type != targetValue.Type {
-		return false, fmt.Errorf("compare for different types, got %v and %v", jsonValue.Type, targetValue.Type)
+		return false, &ParamOverrideRequestValueError{Err: fmt.Errorf("compare for different types, got %v and %v", jsonValue.Type, targetValue.Type)}
 	}
 
 	switch jsonValue.Type {
@@ -781,8 +799,11 @@ func compareEqual(jsonValue, targetValue gjson.Result) (bool, error) {
 
 func compareNumeric(jsonValue, targetValue gjson.Result, operator string) (bool, error) {
 	// 只有数字类型才支持数值比较
-	if jsonValue.Type != gjson.Number || targetValue.Type != gjson.Number {
+	if targetValue.Type != gjson.Number {
 		return false, fmt.Errorf("numeric comparison requires both values to be numbers, got %v and %v", jsonValue.Type, targetValue.Type)
+	}
+	if jsonValue.Type != gjson.Number {
+		return false, &ParamOverrideRequestValueError{Err: fmt.Errorf("numeric comparison requires both values to be numbers, got %v and %v", jsonValue.Type, targetValue.Type)}
 	}
 
 	jsonNum := jsonValue.Num

@@ -110,7 +110,7 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 		usage                                     *dto.Usage
 		audio, stream, refund, insufficient, tool bool
 		realtime, reserveInsufficient             bool
-		wallet, outboundImages                    int
+		wallet, outboundImages, retryReservation  int
 		groupRatio                                float64
 		want                                      int
 		unit                                      billingexpr.BillingUnit
@@ -140,6 +140,8 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 		{name: "image quantity exceeds one-image wallet before submission", expression: `tier("image", fixed(0.04)) * image_count`, requestedImages: 4, wallet: 20000, insufficient: true},
 		{name: "image override reserves extra quantity", expression: `tier("image", fixed(0.04)) * image_count`, requestedImages: 1, outboundImages: 4, want: 80000, unit: billingexpr.BillingUnitRequest},
 		{name: "image override cannot exceed remaining wallet", expression: `tier("image", fixed(0.04)) * image_count`, requestedImages: 1, outboundImages: 4, wallet: 40000, reserveInsufficient: true, refund: true},
+		{name: "task retry holds a pricier channel and refunds all of it", expression: flat, retryReservation: 40000, refund: true},
+		{name: "task retry cannot exceed remaining wallet", expression: flat, retryReservation: 40000, wallet: 20000, reserveInsufficient: true, refund: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			quota := startingQuota
@@ -201,6 +203,17 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 					} else {
 						require.Nil(t, reserveErr)
 						assert.Equal(t, tc.want, info.Billing.GetPreConsumedQuota())
+					}
+				}
+				if tc.retryReservation > 0 {
+					retryErr := PreConsumeBilling(ctx, tc.retryReservation, info)
+					if tc.reserveInsufficient {
+						require.NotNil(t, retryErr)
+						assert.Equal(t, types.ErrorCodeInsufficientUserQuota, retryErr.GetErrorCode())
+						assert.Equal(t, reservation, info.Billing.GetPreConsumedQuota())
+					} else {
+						require.Nil(t, retryErr)
+						assert.Equal(t, tc.retryReservation, info.Billing.GetPreConsumedQuota())
 					}
 				}
 				if tc.refund {
@@ -855,7 +868,7 @@ func TestCalculateTextQuotaSummaryBillsCacheCreationInputTokens(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	info := &relaycommon.RelayInfo{
-		RelayFormat: types.RelayFormatOpenAI,
+		RelayFormat:     types.RelayFormatOpenAI,
 		OriginModelName: "cache-creation-input",
 		PriceData: hosttypes.PriceData{
 			ModelRatio: 1, CompletionRatio: 1, CacheRatio: 0.1,
@@ -864,9 +877,9 @@ func TestCalculateTextQuotaSummaryBillsCacheCreationInputTokens(t *testing.T) {
 		StartTime: time.Now(),
 	}
 	for _, tc := range []struct {
-		name string
+		name  string
 		usage string
-		want int
+		want  int
 	}{
 		{"explicit cache creation", `{"prompt_tokens":1510,"completion_tokens":20,"prompt_tokens_details":{"cached_tokens":1200,"cache_creation_input_tokens":300}}`, 525},
 		{"overlapping reports counted once", `{"prompt_tokens":1510,"completion_tokens":20,"prompt_tokens_details":{"cached_tokens":1200,"cache_write_tokens":100,"cache_creation_input_tokens":300}}`, 525},

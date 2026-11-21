@@ -214,6 +214,37 @@ func TestGeneralOpenAIRequestGetSystemRoleName(t *testing.T) {
 	}
 }
 
+func TestOpenAIChatCapabilitiesGPT61And62(t *testing.T) {
+	for _, tc := range []struct {
+		model, effort string
+		compatible    bool
+		sampling      bool
+	}{
+		{model: "gpt-6.1-sol", compatible: true},
+		{model: "gpt-6.1-sol", effort: "none", compatible: true},
+		{model: "gpt-6.1-terra", compatible: true},
+		{model: "gpt-6.1-terra", effort: "none", compatible: true, sampling: true},
+		{model: "gpt-6.1-terra", effort: "medium", compatible: true},
+		{model: "gpt-6.1-terra-2026-11-01", effort: "none", compatible: true, sampling: true},
+		{model: "gpt-6.2-astra", compatible: true},
+		{model: "gpt-6.2-astra", effort: "none", compatible: true},
+		{model: "gpt-6.2-sol", compatible: true},
+		{model: "gpt-6.2-sol", effort: "none", compatible: true},
+		{model: "gpt-6.2-sol-2026-11-01", compatible: true},
+		{model: "gpt-6.2-sol-pro", sampling: true},
+		{model: "gpt-6.2-sol-2026-99-99", sampling: true},
+	} {
+		t.Run(tc.model+"/"+tc.effort, func(t *testing.T) {
+			capabilities := GetOpenAIChatCapabilities(tc.model, tc.effort)
+			assert.Equal(t, tc.compatible, capabilities.UseMaxCompletionTokens)
+			assert.Equal(t, tc.compatible, capabilities.UseDeveloperRole)
+			assert.Equal(t, tc.sampling, capabilities.SupportsTemperature)
+			assert.Equal(t, tc.sampling, capabilities.SupportsTopP)
+			assert.Equal(t, tc.sampling, capabilities.SupportsLogProbs)
+		})
+	}
+}
+
 func TestIsOpenAIGPT5Model(t *testing.T) {
 	tests := []struct {
 		model string
@@ -326,4 +357,16 @@ func TestSGLangRequestExtensionsRoundTrip(t *testing.T) {
 			assert.JSONEq(t, tc.raw, string(encoded))
 		})
 	}
+}
+
+// 契约:gpt-image-2.6 新增的请求字段是已知字段,不能落进 Extra 被序列化丢掉。
+func TestImageRequestPreserveGPTImage26Fields(t *testing.T) {
+	raw := []byte(`{"model":"gpt-image-2.6-flare","prompt":"p","complexity":"low","markup":{"image_url":"https://x/o.png"},"svg":{"model":"m"},"frame_count":2,"frame_duration_ms":0}`)
+
+	var req ImageRequest
+	require.NoError(t, kitutil.Unmarshal(raw, &req))
+
+	encoded, err := kitutil.Marshal(req)
+	require.NoError(t, err)
+	assert.JSONEq(t, string(raw), string(encoded))
 }
