@@ -142,6 +142,112 @@ export function parseSubmitResponse(){return {taskId:"1"}} export function build
 	}
 }
 
+func TestTaskAdaptorImageProtocolOverrideHeaders(t *testing.T) {
+	for _, tc := range []struct {
+		name, rule, contentType string
+		configured              map[string]any
+		want                    map[string]string
+		wantHost, wantError     string
+	}{
+		{name: "runtime wins over plugin", rule: `{"operations":[{"mode":"set_header","path":"X-Route","value":"override"}]}`, want: map[string]string{"X-Route": "override"}},
+		{name: "configured headers", rule: `{}`, configured: map[string]any{"X-Route": "configured"}, want: map[string]string{"X-Route": "configured"}},
+		{name: "runtime keeps configured headers", rule: `{"operations":[{"mode":"set_header","path":"X-Route","value":"override"}]}`, configured: map[string]any{"X-Static": "configured"}, want: map[string]string{"X-Route": "override", "X-Static": "configured"}},
+		{name: "placeholders", rule: `{"operations":[{"mode":"set_header","path":"Authorization","value":"Bearer {api_key}"},{"mode":"set_header","path":"X-Trace","value":"{client_header:X-Client-Trace}"}]}`, want: map[string]string{"Authorization": "Bearer test-channel-key", "X-Trace": "client-trace"}},
+		{name: "host override", rule: `{"operations":[{"mode":"set_header","path":"Host","value":"image.provider.example"}]}`, wantHost: "image.provider.example"},
+		{name: "multipart boundary stays authoritative", rule: `{"operations":[{"mode":"set_header","path":"Content-Type","value":"application/json"}]}`, contentType: "multipart/form-data; boundary=generated", want: map[string]string{"Content-Type": "multipart/form-data; boundary=generated"}},
+		{name: "invalid override fails before sending", rule: `{}`, configured: map[string]any{"X-Trace": "{client_header:}"}, wantError: "client_header placeholder name is empty"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var override map[string]any
+			require.NoError(t, common.UnmarshalJsonStr(tc.rule, &override))
+			info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
+				UpstreamModelName: "image-model", ApiKey: "test-channel-key", ParamOverride: override, HeadersOverride: tc.configured,
+			}}
+			request := pluginruntime.ProtocolRequestContext{
+				RouteRequestContext: pluginruntime.RouteRequestContext{Body: map[string]any{"kind": "json", "value": map[string]any{"model": "image-model"}}},
+				Model:               "image-model",
+			}
+			_, err := applyImageProtocolParamOverride(request, info)
+			require.NoError(t, err)
+			adaptor := &TaskAdaptor{submit: &requestDescriptor{
+				Headers: map[string]string{"X-Route": "plugin", "X-Plugin": "kept"}, multipartContentType: tc.contentType,
+			}}
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+			c.Request.Header.Set("Content-Type", "application/json")
+			c.Request.Header.Set("X-Client-Trace", "client-trace")
+			upstream := httptest.NewRequest(http.MethodPost, "https://provider.example/image", nil)
+			err = adaptor.BuildRequestHeader(c, upstream, info)
+			if tc.wantError != "" {
+				require.ErrorContains(t, err, tc.wantError)
+				return
+			}
+			require.NoError(t, err)
+			for name, value := range tc.want {
+				assert.Equal(t, value, upstream.Header.Get(name), name)
+			}
+			if tc.wantHost != "" {
+				assert.Equal(t, tc.wantHost, upstream.Host)
+			}
+			assert.Equal(t, "kept", upstream.Header.Get("X-Plugin"))
+			assert.Equal(t, "application/json", c.Request.Header.Get("Content-Type"))
+		})
+	}
+}
+
+func TestImageProtocolFormOverrideConditions(t *testing.T) {
+	for _, tc := range []struct {
+		name, key, value, condition string
+		matched, invalid            bool
+	}{
+		{name: "numeric count", key: "n", value: "2", condition: `{"path":"n","mode":"gt","value":1}`, matched: true},
+		{name: "unmatched count", key: "n", value: "1", condition: `{"path":"n","mode":"gt","value":1}`},
+		{name: "explicit zero", key: "n", value: "0", condition: `{"path":"n","mode":"gte","value":0}`, matched: true},
+		{name: "fractional guidance", key: "guidance_scale", value: "0.25", condition: `{"path":"guidance_scale","mode":"lt","value":0.5}`, matched: true},
+		{name: "negative seed", key: "seed", value: "-1", condition: `{"path":"seed","mode":"lt","value":0}`, matched: true},
+		{name: "explicit false", key: "watermark", value: "false", condition: `{"path":"watermark","mode":"full","value":false}`, matched: true},
+		{name: "numeric prompt stays text", key: "prompt", value: "123", condition: `{"path":"prompt","mode":"full","value":"123"}`, matched: true},
+		{name: "malformed number stays invalid", key: "n", value: "2invalid", condition: `{"path":"n","mode":"gt","value":1}`, invalid: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var override map[string]any
+			rule := `{"operations":[{"mode":"set","path":"quality","value":"high","conditions":[` + tc.condition + `]}]}`
+			require.NoError(t, common.UnmarshalJsonStr(rule, &override))
+			info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "image-model", ParamOverride: override}}
+			fields := map[string][]string{
+				"model": {"image-model"}, "seed": {"9007199254740993"}, "custom": {"false"}, "tag": {"one", "two"},
+			}
+			fields[tc.key] = []string{tc.value}
+			files := []any{map[string]any{"ref": "request_file:image", "filename": "reference.png"}}
+			body := map[string]any{"kind": "multipart", "fields": fields, "files": files}
+			request := pluginruntime.ProtocolRequestContext{RouteRequestContext: pluginruntime.RouteRequestContext{Body: body}, Model: "image-model"}
+			before, err := common.Marshal(request)
+			require.NoError(t, err)
+			result, err := applyImageProtocolParamOverride(request, info)
+			if tc.invalid {
+				var valueErr *relaycommon.ParamOverrideRequestValueError
+				require.ErrorAs(t, err, &valueErr)
+				return
+			}
+			require.NoError(t, err)
+			effective := result.Body.(map[string]any)
+			actual := effective["fields"].(map[string][]string)
+			if tc.matched {
+				assert.Equal(t, []string{"high"}, actual["quality"])
+			} else {
+				assert.NotContains(t, actual, "quality")
+			}
+			for key, values := range fields {
+				assert.Equal(t, values, actual[key], key)
+			}
+			assert.Equal(t, files, effective["files"])
+			after, err := common.Marshal(request)
+			require.NoError(t, err)
+			assert.Equal(t, before, after, "a retry must start from the unmodified request")
+		})
+	}
+}
+
 func TestTaskAdaptorBuildsMultipartFromOpaqueFileReference(t *testing.T) {
 	// The plugin forwards the client's Content-Type, whose boundary is not the one of the rebuilt body.
 	source := `

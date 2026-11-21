@@ -279,12 +279,22 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 	return a.submit.URL, pluginruntime.ValidateRequestURL(a.submit.URL, info.ChannelBaseUrl, a.plugin.Meta.AllowedHosts)
 }
 
-func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, _ *relaycommon.RelayInfo) error {
+func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info *relaycommon.RelayInfo) error {
 	if a.submit == nil {
 		return fmt.Errorf("plugin submit request was not built")
 	}
 	for name, value := range a.submit.Headers {
 		req.Header.Set(name, value)
+	}
+	headerOverride, err := channel.ResolveHeaderOverride(info, c)
+	if err != nil {
+		return err
+	}
+	for name, value := range headerOverride {
+		req.Header.Set(name, value)
+		if strings.EqualFold(name, "Host") {
+			req.Host = value
+		}
 	}
 	// Preserve the client headers for retries; only the upstream request uses
 	// the boundary generated for this attempt's multipart body.

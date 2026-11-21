@@ -1,8 +1,10 @@
 package jsplugin
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
@@ -37,6 +39,27 @@ func applyImageProtocolParamOverride(request pluginruntime.ProtocolRequestContex
 		for key, entries := range fields {
 			if len(entries) == 1 {
 				values[key] = entries[0]
+				// Form fields are text on the wire, but image scalar conditions
+				// must see the same JSON types as JSON requests. Keep arbitrary
+				// text fields and malformed values for the final decoder to validate.
+				text := strings.TrimSpace(entries[0])
+				if !gjson.Valid(text) {
+					continue
+				}
+				value := gjson.Parse(text)
+				switch key {
+				case "n", "seed", "guidance_scale", "output_compression", "partial_images", "frame_count", "frame_duration_ms",
+					"max_images", "upscale_factor", "strength", "top_scale", "bottom_scale", "left_scale", "right_scale":
+					if value.Type == gjson.Number {
+						// Preserve large integer values without a float64 round trip.
+						values[key] = json.RawMessage(text)
+					}
+				case "stream", "watermark", "watermark_enabled", "prompt_extend", "enable_thinking", "enable_interleave",
+					"enable_sequential", "thinking_mode", "is_sketch", "optimize_prompt", "layer_decomposition":
+					if value.Type == gjson.True || value.Type == gjson.False {
+						values[key] = json.RawMessage(text)
+					}
+				}
 			} else {
 				values[key] = entries
 			}
