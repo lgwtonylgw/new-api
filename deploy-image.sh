@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Manual, image-only deployment for an EXISTING new-api Compose installation.
 # Requires Bash, Docker Compose >= 2.24.4, flock (util-linux), curl, and coreutils.
+# Local image cleanup additionally requires Python 3.10+ (standard library only).
 set -Eeuo pipefail
 umask 077
 
@@ -12,9 +13,10 @@ exec 9>"$STATE_DIR/deploy.lock"
 flock -n 9 || { echo 'Another deployment is running.' >&2; exit 1; }
 
 ACTION=${1:-status}
-if [[ "$ACTION" != deploy && "$ACTION" != rollback && "$ACTION" != status ]]; then
+if [[ "$ACTION" != deploy && "$ACTION" != rollback && "$ACTION" != status && "$ACTION" != cleanup ]]; then
   echo "Usage: bash deploy-image.sh deploy ghcr.io/lgwtonylgw/new-api@sha256:..." >&2
   echo '       bash deploy-image.sh rollback | status' >&2
+  echo '       bash deploy-image.sh cleanup [--apply]' >&2
   exit 2
 fi
 
@@ -38,11 +40,32 @@ compose() {
     -p "$PROJECT" -f "$APP_DIR/compose.runtime.yml" -f "$APP_DIR/compose.image.yml" "$@"
 }
 
+cleanup_images() {
+  command -v python3 >/dev/null || { echo 'Image cleanup requires Python 3.10+.' >&2; return 1; }
+  python3 "$APP_DIR/scripts/cleanup-new-api-images.py" \
+    --app-dir "$APP_DIR" \
+    --keep "${KEEP_ROLLBACK_IMAGES:-3}" \
+    --min-age-days "${IMAGE_MIN_AGE_DAYS:-7}" "$@"
+}
+
+if [[ "$ACTION" == cleanup ]]; then
+  if [[ $# -eq 1 ]]; then
+    cleanup_images
+  elif [[ $# -eq 2 && "$2" == --apply ]]; then
+    cleanup_images --apply
+  else
+    echo 'Usage: bash deploy-image.sh cleanup [--apply]' >&2
+    exit 2
+  fi
+  exit 0
+fi
+
 if [[ "$ACTION" == status ]]; then
   docker inspect --format 'Image={{.Config.Image}} Status={{.State.Status}} Health={{if .State.Health}}{{.State.Health.Status}}{{else}}not-configured{{end}}' new-api
   if [[ -f "$STATE_DIR/previous-image" ]]; then
     printf 'Rollback image: '; cat "$STATE_DIR/previous-image"
   fi
+  echo "Local cleanup: keep=${KEEP_ROLLBACK_IMAGES:-3}, minimum-age=${IMAGE_MIN_AGE_DAYS:-7}d, automatic=${AUTO_CLEANUP_IMAGES:-1}"
   exit 0
 fi
 
@@ -84,11 +107,16 @@ esac
 if [[ "$ACTION" == deploy ]]; then
   OLD_ID=$(docker inspect --format '{{.Image}}' new-api)
   OLD_REF=$(docker inspect --format '{{.Config.Image}}' new-api)
-  ROLLBACK_IMAGE="new-api-local-rollback:$(date -u +%Y%m%dT%H%M%SZ)-$RANDOM"
-  docker tag "$OLD_ID" "$ROLLBACK_IMAGE"
-  printf '%s\n' "$ROLLBACK_IMAGE" > "$STATE_DIR/previous-image.tmp"
-  mv "$STATE_DIR/previous-image.tmp" "$STATE_DIR/previous-image"
-  printf '%s\tprevious=%s\tnew=%s\n' "$(date -u +%FT%TZ)" "$OLD_REF" "$TARGET_IMAGE" >> "$STATE_DIR/history.log"
+  TARGET_ID=$(docker image inspect --format '{{.Id}}' "$TARGET_IMAGE")
+  if [[ "$OLD_ID" != "$TARGET_ID" ]]; then
+    ROLLBACK_IMAGE="new-api-local-rollback:$(date -u +%Y%m%dT%H%M%SZ)-$RANDOM"
+    docker tag "$OLD_ID" "$ROLLBACK_IMAGE"
+    printf '%s\n' "$ROLLBACK_IMAGE" > "$STATE_DIR/previous-image.tmp"
+    mv "$STATE_DIR/previous-image.tmp" "$STATE_DIR/previous-image"
+    printf '%s\tprevious=%s\tnew=%s\n' "$(date -u +%FT%TZ)" "$OLD_REF" "$TARGET_IMAGE" >> "$STATE_DIR/history.log"
+  else
+    echo 'Image is unchanged; keeping the existing rollback target.'
+  fi
 fi
 
 if compose up -d --no-deps --no-build --pull never --wait --wait-timeout 180 new-api; then
@@ -98,6 +126,11 @@ if compose up -d --no-deps --no-build --pull never --wait --wait-timeout 180 new
     mv "$STATE_DIR/current-image.tmp" "$STATE_DIR/current-image"
     printf '%s\tsuccess=%s\n' "$(date -u +%FT%TZ)" "$TARGET_IMAGE" >> "$STATE_DIR/history.log"
     echo "Deployment healthy: $TARGET_IMAGE"
+    if [[ "$ACTION" == deploy && "${AUTO_CLEANUP_IMAGES:-1}" == 1 ]]; then
+      if ! cleanup_images --apply; then
+        echo 'Warning: image cleanup did not finish. The application deployment is healthy.' >&2
+      fi
+    fi
     exit 0
   fi
 fi

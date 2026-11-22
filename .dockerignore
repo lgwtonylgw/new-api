@@ -15,4 +15,6 @@ docs
 /.idea
 /.env
 /.env.*
+/.release
+/compose.runtime.yml
 !THIRD-PARTY-LICENSES.md
