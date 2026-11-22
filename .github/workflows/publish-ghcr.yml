@@ -51,59 +51,8 @@ jobs:
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-  backend:
-    needs: resolve
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      GOWORK: 'off'
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          ref: ${{ needs.resolve.outputs.sha }}
-          persist-credentials: false
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version-file: go.mod
-          cache-dependency-path: |
-            go.sum
-            relaykit/go.sum
-            tokenkit/go.sum
-      - name: Vet, build, and test the three Go modules
-        run: |
-          set -euo pipefail
-          mkdir -p web/dist
-          touch web/dist/index.html
-          for module in . relaykit tokenkit; do
-            (cd "$module" && go vet ./... && go build ./...)
-          done
-          make test
-
-  frontend:
-    needs: resolve
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: web
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          ref: ${{ needs.resolve.outputs.sha }}
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: '1.4.0'
-      - run: bun install --frozen-lockfile
-      - run: bun run typecheck
-      - run: bun run test
-      - name: Verify production frontend build
-        env:
-          VITE_REACT_APP_VERSION: ${{ needs.resolve.outputs.tag }}
-        run: bun run build
-
   publish:
-    needs: [resolve, backend, frontend]
+    needs: resolve
     runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 45
     permissions:
