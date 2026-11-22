@@ -21,6 +21,7 @@ import { useEffect, useState } from 'react'
 
 import { isHttpUrl } from '@/lib/content-format'
 import { handleServerError } from '@/lib/handle-server-error'
+import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { getHomePageContent } from '../api'
 import type { HomePageContentResult } from '../types'
@@ -32,39 +33,42 @@ const STORAGE_KEY = 'home_page_content'
  * Supports both Markdown/HTML content and iframe URLs
  */
 export function useHomePageContent(): HomePageContentResult {
-  const [content, setContent] = useState<string>('')
-  const [isLoaded, setIsLoaded] = useState(false)
+  const [home, setHome] = useState(() => {
+    let cached: string | null = null
+    try {
+      cached = localStorage.getItem(STORAGE_KEY)
+    } catch {
+      // Storage can be unavailable; the network request still loads the page.
+    }
+    return { content: cached ?? '', isLoaded: cached !== null }
+  })
 
   useEffect(() => {
     let mounted = true
 
     const loadContent = async () => {
-      // Load from localStorage first for immediate display
-      const cached = localStorage.getItem(STORAGE_KEY)
-      if (cached && mounted) {
-        setContent(cached)
-      }
-
       try {
-        const response = await getHomePageContent()
-        const { success, data } = response
+        const response = requireServerSuccess(await getHomePageContent())
 
         if (!mounted) return
 
-        if (success && data) {
-          setContent(data)
-          localStorage.setItem(STORAGE_KEY, data)
-        } else {
-          // Clear content if API returns empty
-          setContent('')
-          localStorage.removeItem(STORAGE_KEY)
+        const content = response.data ?? ''
+        setHome({ content, isLoaded: true })
+        try {
+          // An empty value records the default homepage, so it also renders
+          // immediately on the next visit while the server is revalidated.
+          localStorage.setItem(STORAGE_KEY, content)
+        } catch {
+          // A full or blocked cache must not hide successfully fetched content.
         }
       } catch (error) {
         if (!mounted) return
         handleServerError(error, i18next.t('Failed to load home page content'))
       } finally {
         if (mounted) {
-          setIsLoaded(true)
+          setHome((current) =>
+            current.isLoaded ? current : { ...current, isLoaded: true }
+          )
         }
       }
     }
@@ -76,7 +80,5 @@ export function useHomePageContent(): HomePageContentResult {
     }
   }, [])
 
-  const isUrl = isHttpUrl(content)
-
-  return { content, isLoaded, isUrl }
+  return { ...home, isUrl: isHttpUrl(home.content) }
 }
