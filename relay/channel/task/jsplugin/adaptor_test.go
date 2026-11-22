@@ -143,25 +143,33 @@ export function parseSubmitResponse(){return {taskId:"1"}} export function build
 }
 
 func TestTaskAdaptorImageProtocolOverrideHeaders(t *testing.T) {
+	service.InitHttpClient()
+	plugin, err := pluginruntime.NewRegistry().Register(mockPlugin, pluginruntime.Options{})
+	require.NoError(t, err)
 	for _, tc := range []struct {
-		name, rule, contentType string
-		configured              map[string]any
-		want                    map[string]string
-		wantHost, wantError     string
+		name, rule          string
+		configured          map[string]any
+		want                map[string]string
+		wantHost, wantError string
 	}{
 		{name: "runtime wins over plugin", rule: `{"operations":[{"mode":"set_header","path":"X-Route","value":"override"}]}`, want: map[string]string{"X-Route": "override"}},
 		{name: "configured headers", rule: `{}`, configured: map[string]any{"X-Route": "configured"}, want: map[string]string{"X-Route": "configured"}},
 		{name: "runtime keeps configured headers", rule: `{"operations":[{"mode":"set_header","path":"X-Route","value":"override"}]}`, configured: map[string]any{"X-Static": "configured"}, want: map[string]string{"X-Route": "override", "X-Static": "configured"}},
 		{name: "placeholders", rule: `{"operations":[{"mode":"set_header","path":"Authorization","value":"Bearer {api_key}"},{"mode":"set_header","path":"X-Trace","value":"{client_header:X-Client-Trace}"}]}`, want: map[string]string{"Authorization": "Bearer test-channel-key", "X-Trace": "client-trace"}},
 		{name: "host override", rule: `{"operations":[{"mode":"set_header","path":"Host","value":"image.provider.example"}]}`, wantHost: "image.provider.example"},
-		{name: "multipart boundary stays authoritative", rule: `{"operations":[{"mode":"set_header","path":"Content-Type","value":"application/json"}]}`, contentType: "multipart/form-data; boundary=generated", want: map[string]string{"Content-Type": "multipart/form-data; boundary=generated"}},
 		{name: "invalid override fails before sending", rule: `{}`, configured: map[string]any{"X-Trace": "{client_header:}"}, wantError: "client_header placeholder name is empty"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			received := make(chan *http.Request, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				received <- r.Clone(r.Context())
+				_, _ = w.Write([]byte(`{}`))
+			}))
+			t.Cleanup(server.Close)
 			var override map[string]any
 			require.NoError(t, common.UnmarshalJsonStr(tc.rule, &override))
 			info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
-				UpstreamModelName: "image-model", ApiKey: "test-channel-key", ParamOverride: override, HeadersOverride: tc.configured,
+				ChannelBaseUrl: server.URL, UpstreamModelName: "image-model", ApiKey: "test-channel-key", ParamOverride: override, HeadersOverride: tc.configured,
 			}}
 			request := pluginruntime.ProtocolRequestContext{
 				RouteRequestContext: pluginruntime.RouteRequestContext{Body: map[string]any{"kind": "json", "value": map[string]any{"model": "image-model"}}},
@@ -169,20 +177,23 @@ func TestTaskAdaptorImageProtocolOverrideHeaders(t *testing.T) {
 			}
 			_, err := applyImageProtocolParamOverride(request, info)
 			require.NoError(t, err)
-			adaptor := &TaskAdaptor{submit: &requestDescriptor{
-				Headers: map[string]string{"X-Route": "plugin", "X-Plugin": "kept"}, multipartContentType: tc.contentType,
-			}}
+			adaptor := New(plugin)
+			adaptor.Init(info)
+			adaptor.submit = &requestDescriptor{URL: server.URL, Headers: map[string]string{"X-Route": "plugin", "X-Plugin": "kept"}}
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
 			c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
 			c.Request.Header.Set("Content-Type", "application/json")
 			c.Request.Header.Set("X-Client-Trace", "client-trace")
-			upstream := httptest.NewRequest(http.MethodPost, "https://provider.example/image", nil)
-			err = adaptor.BuildRequestHeader(c, upstream, info)
+			response, err := adaptor.DoRequest(c, info, strings.NewReader(`{}`))
 			if tc.wantError != "" {
 				require.ErrorContains(t, err, tc.wantError)
+				assert.Empty(t, received, "invalid headers must fail before sending")
 				return
 			}
 			require.NoError(t, err)
+			require.NoError(t, response.Body.Close())
+			require.Len(t, received, 1)
+			upstream := <-received
 			for name, value := range tc.want {
 				assert.Equal(t, value, upstream.Header.Get(name), name)
 			}
@@ -249,6 +260,7 @@ func TestImageProtocolFormOverrideConditions(t *testing.T) {
 }
 
 func TestTaskAdaptorBuildsMultipartFromOpaqueFileReference(t *testing.T) {
+	service.InitHttpClient()
 	// The plugin forwards the client's Content-Type, whose boundary is not the one of the rebuilt body.
 	source := `
 export const meta = {apiVersion:1,key:"multipart",name:"Multipart",version:"1.0.0",author:{name:"Test"},models:["m"],fetchMode:"per_task"};
@@ -257,40 +269,79 @@ export function parseSubmitResponse(ctx,r){return {taskId:"1"}} export function 
 `
 	plugin, err := pluginruntime.NewRegistry().Register(source, pluginruntime.Options{})
 	require.NoError(t, err)
-	adaptor := New(plugin)
-	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: "https://provider.example"}, TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
-	adaptor.Init(info)
-	var input bytes.Buffer
-	writer := multipart.NewWriter(&input)
-	file, err := writer.CreateFormFile("input_reference", "ref.png")
-	require.NoError(t, err)
-	_, err = file.Write([]byte("image-bytes"))
-	require.NoError(t, err)
-	require.NoError(t, writer.Close())
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader(input.Bytes()))
-	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
-	c.Set("task_request", relaycommon.TaskSubmitReq{Prompt: "p"})
-	body, err := adaptor.BuildRequestBody(c, info)
-	require.NoError(t, err)
-	requestBytes, err := io.ReadAll(body)
-	require.NoError(t, err)
-	upstreamRequest := httptest.NewRequest(http.MethodPost, "https://provider.example/submit", bytes.NewReader(requestBytes))
-	require.NoError(t, adaptor.BuildRequestHeader(c, upstreamRequest, info))
-	mediaType, params, err := mime.ParseMediaType(upstreamRequest.Header.Get("Content-Type"))
-	require.NoError(t, err)
-	assert.Equal(t, "multipart/form-data", mediaType)
-	require.NotEmpty(t, params["boundary"])
-	reader := multipart.NewReader(bytes.NewReader(requestBytes), params["boundary"])
-	form, err := reader.ReadForm(1024)
-	require.NoError(t, err)
-	assert.Equal(t, []string{"m"}, form.Value["model"])
-	require.Len(t, form.File["input_reference"], 1)
-	opened, err := form.File["input_reference"][0].Open()
-	require.NoError(t, err)
-	content, err := io.ReadAll(opened)
-	require.NoError(t, err)
-	assert.Equal(t, "image-bytes", string(content))
+	for _, tc := range []struct {
+		name       string
+		configured map[string]any
+		rule       string
+	}{
+		{name: "plugin headers"},
+		{name: "configured content type", configured: map[string]any{"Content-Type": "application/json"}},
+		{name: "client header passthrough", configured: map[string]any{"*": true}},
+		{name: "runtime content type", rule: `{"operations":[{"mode":"set_header","path":"Content-Type","value":"application/json"}]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			received := make(chan *http.Request, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				request := r.Clone(r.Context())
+				request.Body = io.NopCloser(bytes.NewReader(body))
+				received <- request
+				_, _ = w.Write([]byte(`{}`))
+			}))
+			t.Cleanup(server.Close)
+			adaptor := New(plugin)
+			info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: server.URL, UpstreamModelName: "m", HeadersOverride: tc.configured}, TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+			if tc.rule != "" {
+				require.NoError(t, common.UnmarshalJsonStr(tc.rule, &info.ParamOverride))
+				_, err := applyImageProtocolParamOverride(pluginruntime.ProtocolRequestContext{
+					RouteRequestContext: pluginruntime.RouteRequestContext{Body: map[string]any{"kind": "json", "value": map[string]any{"model": "m"}}}, Model: "m",
+				}, info)
+				require.NoError(t, err)
+			}
+			adaptor.Init(info)
+			var input bytes.Buffer
+			writer := multipart.NewWriter(&input)
+			file, err := writer.CreateFormFile("input_reference", "ref.png")
+			require.NoError(t, err)
+			_, err = file.Write([]byte("image-bytes"))
+			require.NoError(t, err)
+			require.NoError(t, writer.Close())
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader(input.Bytes()))
+			c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+			c.Set("task_request", relaycommon.TaskSubmitReq{Prompt: "p"})
+			body, err := adaptor.BuildRequestBody(c, info)
+			require.NoError(t, err)
+			response, err := adaptor.DoRequest(c, info, body)
+			require.NoError(t, err)
+			require.NoError(t, response.Body.Close())
+			require.Equal(t, http.StatusOK, response.StatusCode)
+			require.Len(t, received, 1)
+			upstreamRequest := <-received
+			mediaType, params, err := mime.ParseMediaType(upstreamRequest.Header.Get("Content-Type"))
+			require.NoError(t, err)
+			assert.Equal(t, "multipart/form-data", mediaType)
+			require.NotEmpty(t, params["boundary"])
+			assert.NotEqual(t, writer.Boundary(), params["boundary"], "the rebuilt body has its own boundary")
+			assert.Equal(t, writer.FormDataContentType(), c.GetHeader("Content-Type"), "client headers remain reusable on retry")
+			reader := multipart.NewReader(upstreamRequest.Body, params["boundary"])
+			form, err := reader.ReadForm(1024)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, form.RemoveAll()) })
+			assert.Equal(t, []string{"m"}, form.Value["model"])
+			require.Len(t, form.File["input_reference"], 1)
+			opened, err := form.File["input_reference"][0].Open()
+			require.NoError(t, err)
+			content, err := io.ReadAll(opened)
+			require.NoError(t, err)
+			assert.Equal(t, "image-bytes", string(content))
+			require.NoError(t, opened.Close())
+		})
+	}
 }
 
 func TestTaskAdaptorInlinesJSONFilePlaceholders(t *testing.T) {

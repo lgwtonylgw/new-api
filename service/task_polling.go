@@ -516,6 +516,24 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if err != nil {
 		return recordPollFailure(ctx, adaptor, task, snap.Status, pollClassTransport, resp.StatusCode, err.Error())
 	}
+	return ApplyVideoTaskResponse(ctx, adaptor, task, resp, responseBody)
+}
+
+// ApplyVideoTaskResponse records an already fetched response through the same
+// status validation, CAS and settlement path for polling and client queries.
+// It never fetches upstream again. Persisted terminal tasks stay terminal.
+func ApplyVideoTaskResponse(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, resp *http.Response, responseBody []byte) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if task == nil || resp == nil {
+		return fmt.Errorf("task and upstream response are required")
+	}
+	snap := task.Snapshot()
+	if snap.Status == model.TaskStatusSuccess || snap.Status == model.TaskStatusFailure {
+		return nil
+	}
+	taskId := task.GetUpstreamTaskID()
 
 	logger.LogDebug(ctx, "updateVideoSingleTask response: %s", responseBody)
 
@@ -524,7 +542,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		logger.LogWarn(ctx, common.LogText("task %s poll %s (failures=%d, http=%d): %s", task.TaskID, pollClassNotFound, task.PrivateData.PollFailures, resp.StatusCode, unrecognizedPollDetail("", responseBody)))
 		return failTaskFromPoll(ctx, adaptor, task, snap.Status, "Upstream task not found")
 	case pollClassAuth:
-		logger.LogWarn(ctx, common.LogText("task poll auth failure channel_id=%d task=%s http=%d", ch.Id, task.TaskID, resp.StatusCode))
+		logger.LogWarn(ctx, common.LogText("task poll auth failure channel_id=%d task=%s http=%d", task.ChannelId, task.TaskID, resp.StatusCode))
 		return recordPollFailure(ctx, adaptor, task, snap.Status, pollClassAuth, resp.StatusCode, "")
 	case pollClassTransient:
 		return recordPollFailure(ctx, adaptor, task, snap.Status, pollClassTransient, resp.StatusCode, "")
@@ -533,7 +551,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	taskResult := &relaycommon.TaskInfo{}
 	// try parse as New API response format
 	var responseItems taskdto.TaskResponse[model.Task]
-	if err = common.Unmarshal(responseBody, &responseItems); err == nil && responseItems.IsSuccess() {
+	if err := common.Unmarshal(responseBody, &responseItems); err == nil && responseItems.IsSuccess() {
 		logger.LogDebug(ctx, "updateVideoSingleTask parsed as new api response format: %+v", responseItems)
 		t := responseItems.Data
 		taskResult.TaskID = t.TaskID

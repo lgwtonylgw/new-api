@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -52,6 +53,7 @@ func setupRelayChannelDB(t *testing.T) *gorm.DB {
 
 func TestRealtimeFetchAppliesChannelHeaderOverrides(t *testing.T) {
 	database := setupRelayChannelDB(t)
+	require.NoError(t, database.AutoMigrate(&model.Task{}))
 	service.InitHttpClient()
 	requests := make(chan *http.Request, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -73,6 +75,7 @@ func TestRealtimeFetchAppliesChannelHeaderOverrides(t *testing.T) {
 		},
 	}
 
+	require.NoError(t, database.Create(task).Error)
 	tryRealtimeFetch(task, true)
 
 	require.Len(t, requests, 1)
@@ -82,59 +85,82 @@ func TestRealtimeFetchAppliesChannelHeaderOverrides(t *testing.T) {
 	assert.Equal(t, "saved-key", request.Header.Get("X-Goog-Api-Key"))
 }
 
-func TestRealtimeFetchRefundsTaskItFindsFailed(t *testing.T) {
-	database := setupRelayChannelDB(t)
-	require.NoError(t, database.AutoMigrate(&model.Task{}, &model.User{}, &model.Log{}))
-	previousLogDB := model.LOG_DB
-	previousFactory := service.GetTaskAdaptorFunc
-	previousRedis := common.RedisEnabled
-	model.LOG_DB = database
-	common.RedisEnabled = false
-	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {
-		if adaptor := GetTaskAdaptor(platform); adaptor != nil {
-			return adaptor
-		}
-		return nil
+func TestRealtimeFetchSettlesFirstTerminalResponseOnce(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, reason string
+		status             model.TaskStatus
+		quota, balance     int
+	}{
+		{name: "failure", body: `{"name":"operations/task-1","done":true,"error":{"code":3,"message":"blocked by safety"}}`, status: model.TaskStatusFailure, reason: "blocked by safety", balance: 1100},
+		{name: "success", body: `{"name":"operations/task-1","done":true,"response":{"generateVideoResponse":{"generatedVideos":[{"video":{"uri":"https://media.example/video.mp4"}}]}}}`, status: model.TaskStatusSuccess, quota: 1000, balance: 100},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			database := setupRelayChannelDB(t)
+			require.NoError(t, database.AutoMigrate(&model.Task{}, &model.User{}, &model.Log{}))
+			previousLogDB := model.LOG_DB
+			previousRedis := common.RedisEnabled
+			model.LOG_DB = database
+			common.RedisEnabled = false
+			t.Cleanup(func() {
+				model.LOG_DB = previousLogDB
+				common.RedisEnabled = previousRedis
+			})
+			service.InitHttpClient()
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if requests.Add(1) == 2 {
+					w.WriteHeader(http.StatusTooManyRequests)
+					return
+				}
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			t.Cleanup(server.Close)
+			channel := &model.Channel{Name: "realtime-refund", Type: constant.ChannelTypeGemini, Key: "channel-key", BaseURL: &server.URL}
+			require.NoError(t, database.Create(channel).Error)
+			require.NoError(t, database.Create(&model.User{Id: 7, Username: "realtime-owner", Quota: 100}).Error)
+			task := &model.Task{
+				TaskID: "public-task", Platform: constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeGemini)),
+				UserId: 7, ChannelId: channel.Id, Quota: 1000,
+				Status: model.TaskStatusInProgress, Progress: "50%",
+				PrivateData: model.TaskPrivateData{
+					Key: "channel-key", UpstreamTaskID: base64.RawURLEncoding.EncodeToString([]byte("operations/task-1")),
+					BillingContext: &model.TaskBillingContext{PerCallBilling: true},
+				},
+			}
+			require.NoError(t, database.Create(task).Error)
+			stale := *task
+
+			tryRealtimeFetch(task, true)
+			assert.EqualValues(t, 1, requests.Load(), "a terminal response must not cause another upstream query")
+
+			var stored model.Task
+			require.NoError(t, database.First(&stored, task.ID).Error)
+			assert.Equal(t, tc.status, stored.Status)
+			assert.Equal(t, tc.reason, stored.FailReason)
+			assert.Equal(t, tc.quota, stored.Quota)
+			if tc.status == model.TaskStatusSuccess {
+				assert.NotEmpty(t, stored.GetResultURL(), "successful tasks keep a retrievable result")
+				assert.Contains(t, string(stored.Data), "https://media.example/video.mp4")
+			}
+
+			// Query the persisted terminal task again, as a new client request would.
+			tryRealtimeFetch(&stored, true)
+			assert.EqualValues(t, 2, requests.Load(), "each client query fetches at most once")
+			require.NoError(t, database.First(&stored, task.ID).Error)
+			assert.Equal(t, tc.status, stored.Status)
+			assert.Equal(t, tc.quota, stored.Quota)
+			// Another reader may have loaded the pending row before the first reader
+			// committed it. Its CAS must lose without repeating settlement.
+			tryRealtimeFetch(&stale, true)
+			assert.EqualValues(t, 3, requests.Load())
+			require.NoError(t, database.First(&stored, task.ID).Error)
+			assert.Equal(t, tc.status, stored.Status)
+			assert.Equal(t, tc.quota, stored.Quota)
+			var user model.User
+			require.NoError(t, database.First(&user, 7).Error)
+			assert.Equal(t, tc.balance, user.Quota, "repeated or stale queries must not repeat settlement")
+		})
 	}
-	t.Cleanup(func() {
-		model.LOG_DB = previousLogDB
-		service.GetTaskAdaptorFunc = previousFactory
-		common.RedisEnabled = previousRedis
-	})
-	service.InitHttpClient()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"name":"operations/task-1","done":true,"error":{"code":3,"message":"blocked by safety"}}`))
-	}))
-	t.Cleanup(server.Close)
-	channel := &model.Channel{Name: "realtime-refund", Type: constant.ChannelTypeGemini, Key: "channel-key", BaseURL: &server.URL}
-	require.NoError(t, database.Create(channel).Error)
-	require.NoError(t, database.Create(&model.User{Id: 7, Username: "realtime-owner", Quota: 100}).Error)
-	task := &model.Task{
-		TaskID: "public-task", Platform: constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeGemini)),
-		UserId: 7, ChannelId: channel.Id, Quota: 1000,
-		Status: model.TaskStatusInProgress, Progress: "50%",
-		PrivateData: model.TaskPrivateData{
-			Key: "channel-key", UpstreamTaskID: base64.RawURLEncoding.EncodeToString([]byte("operations/task-1")),
-		},
-	}
-	require.NoError(t, database.Create(task).Error)
-
-	tryRealtimeFetch(task, true)
-
-	var stored model.Task
-	require.NoError(t, database.First(&stored, task.ID).Error)
-	assert.Equal(t, model.TaskStatus(model.TaskStatusFailure), stored.Status)
-	assert.Equal(t, "blocked by safety", stored.FailReason)
-	assert.Zero(t, stored.Quota, "the failed task is refunded")
-
-	// Query the persisted terminal task again, as a new client request would.
-	tryRealtimeFetch(&stored, true)
-	require.NoError(t, database.First(&stored, task.ID).Error)
-	assert.Equal(t, model.TaskStatus(model.TaskStatusFailure), stored.Status)
-	assert.Zero(t, stored.Quota)
-	var user model.User
-	require.NoError(t, database.First(&user, 7).Error)
-	assert.Equal(t, 1100, user.Quota, "repeated terminal queries must not refund twice")
 }
 
 func TestApplyChannelPinPreservesOriginTasksAndRetryMode(t *testing.T) {

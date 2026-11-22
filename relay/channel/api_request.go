@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"regexp"
 	"strings"
@@ -530,8 +531,15 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 	if err != nil {
 		return nil, fmt.Errorf("setup request header failed: %w", err)
 	}
+	// The adaptor generated this boundary together with the multipart body.
+	// Client passthrough or configured headers cannot replace that body format.
+	contentType := req.Header.Get("Content-Type")
+	mediaType, params, _ := mime.ParseMediaType(contentType)
 	if err = ApplyHeaderOverride(info, c, req); err != nil {
 		return nil, err
+	}
+	if mediaType == "multipart/form-data" && params["boundary"] != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	resp, err := doRequest(c, req, info)
 	if err != nil {
