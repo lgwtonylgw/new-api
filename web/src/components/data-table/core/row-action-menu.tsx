@@ -40,13 +40,13 @@ export function DataTableRowActionMenu(props: DataTableRowActionMenuProps) {
   return (
     <DropdownMenu modal={props.modal} onOpenChange={props.onOpenChange}>
       <DropdownMenuTrigger
+        aria-label={props.ariaLabel}
         render={
           props.trigger ?? (
             <Button
               variant='ghost'
               size='icon'
               className='data-popup-open:bg-muted'
-              aria-label={props.ariaLabel}
             />
           )
         }
