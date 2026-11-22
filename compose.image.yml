@@ -1,0 +1,7 @@
+# Layer this over the existing server configuration in the SAME directory.
+# Docker Compose v2.24.4 or newer is the deployment baseline for this kit.
+services:
+  new-api:
+    build: !reset null
+    image: ${NEW_API_IMAGE:?Set NEW_API_IMAGE to the published image digest}
+    pull_policy: missing
