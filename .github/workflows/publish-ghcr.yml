@@ -16,6 +16,11 @@ on:
         options:
           - amd64
           - arm64
+      deploy:
+        description: Deploy the published image to production through SSH
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -53,6 +58,8 @@ jobs:
 
   publish:
     needs: resolve
+    outputs:
+      image_ref: ${{ needs.resolve.outputs.image }}@${{ steps.build.outputs.digest }}
     runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 45
     permissions:
@@ -107,3 +114,40 @@ jobs:
             echo '```'
             echo 'Run this command from the existing production application directory.'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy production through SSH
+    needs: publish
+    if: ${{ inputs.deploy }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions: {}
+    steps:
+      - name: Deploy the exact published image
+        env:
+          DEPLOY_HOST: ${{ secrets.SSH_HOST }}
+          DEPLOY_PORT: ${{ secrets.SSH_PORT }}
+          DEPLOY_USER: ${{ secrets.SSH_USER }}
+          DEPLOY_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          DEPLOY_IMAGE: ${{ needs.publish.outputs.image_ref }}
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.:-]*$ ]] || { echo 'Invalid or missing SSH_HOST'; exit 1; }
+          [[ "$DEPLOY_PORT" =~ ^[0-9]{1,5}$ ]] && (( 10#$DEPLOY_PORT >= 1 && 10#$DEPLOY_PORT <= 65535 )) || { echo 'Invalid or missing SSH_PORT'; exit 1; }
+          [[ "$DEPLOY_USER" =~ ^[a-z_][a-z0-9_-]*$ ]] || { echo 'Invalid or missing SSH_USER'; exit 1; }
+          [[ -n "$DEPLOY_KEY" && -n "$DEPLOY_KNOWN_HOSTS" ]] || { echo 'Missing SSH key or trusted host key'; exit 1; }
+          [[ "$DEPLOY_IMAGE" =~ ^ghcr\.io/lgwtonylgw/new-api@sha256:[a-f0-9]{64}$ ]] || { echo 'Invalid published image reference'; exit 1; }
+
+          umask 077
+          KEY_FILE="$RUNNER_TEMP/new-api-deploy-key"
+          HOSTS_FILE="$RUNNER_TEMP/new-api-known-hosts"
+          trap 'rm -f -- "$KEY_FILE" "$HOSTS_FILE"' EXIT
+          printf '%s\n' "$DEPLOY_KEY" | tr -d '\r' > "$KEY_FILE"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$HOSTS_FILE"
+          ssh -T -i "$KEY_FILE" -p "$DEPLOY_PORT" \
+            -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOSTS_FILE" \
+            -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 \
+            "$DEPLOY_USER@$DEPLOY_HOST" "deploy $DEPLOY_IMAGE"
