@@ -673,11 +673,21 @@ func GetUserModels(c *gin.Context) {
 			groupsToQuery = []string{group}
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{
+	models := service.GetGroupsEnabledModels(groupsToQuery)
+	response := gin.H{
 		"success": true,
 		"message": "",
-		"data":    service.GetGroupsEnabledModels(groupsToQuery),
-	})
+		"data":    models,
+	}
+	if c.Query("include_endpoints") == "true" {
+		model.GetPricing() // Initialize the shared model endpoint catalog.
+		endpoints := make(map[string][]constant.EndpointType, len(models))
+		for _, name := range models {
+			endpoints[name] = model.GetModelSupportEndpointTypesForGroups(name, groupsToQuery)
+		}
+		response["model_endpoints"] = endpoints
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 func UpdateUser(c *gin.Context) {

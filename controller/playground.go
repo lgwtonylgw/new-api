@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/gin-gonic/gin"
@@ -53,5 +54,9 @@ func Playground(c *gin.Context) {
 	}
 	_ = middleware.SetupContextForToken(c, tempToken)
 
+	if relayInfo.RelayMode == relayconstant.RelayModeImagesGenerations {
+		servePlaygroundImage(c)
+		return
+	}
 	Relay(c, types.RelayFormatOpenAI)
 }

@@ -40,9 +40,13 @@ func Distribute() func(c *gin.Context) {
 			}
 		}()
 		constraints := service.GetChannelConstraints(c)
+		requestPath := c.Request.URL.Path
+		if requestPath == "/pg/images/generations" {
+			requestPath = "/v1/images/generations"
+		}
 		constraints.AddFilter(taskdto.ChannelFilter{
 			Kind:        taskdto.FilterRequestPath,
-			RequestPath: c.Request.URL.Path,
+			RequestPath: requestPath,
 		})
 		service.AppendTaskPluginIdentityFilter(c, c.GetString("expected_task_plugin_key"))
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
@@ -78,8 +82,7 @@ func Distribute() func(c *gin.Context) {
 					abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorModelNameRequired))
 					return
 				}
-				// check path is /pg/chat/completions
-				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
+				if strings.HasPrefix(c.Request.URL.Path, "/pg/") {
 					usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 					playgroundRequest := &dto.PlayGroundRequest{}
 					err = common.UnmarshalBodyReusable(c, playgroundRequest)
@@ -496,8 +499,8 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		}
 		c.Set("relay_mode", relayMode)
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
-		// playground chat completions
+	if strings.HasPrefix(c.Request.URL.Path, "/pg/") {
+		// Both playground protocols carry the selected group in the JSON body.
 		req, err := getModelFromRequest(c)
 		if err != nil {
 			return nil, false, err

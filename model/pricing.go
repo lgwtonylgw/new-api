@@ -1,6 +1,7 @@
 package model
 
 import (
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -71,8 +72,9 @@ var (
 )
 
 var (
-	modelSupportEndpointTypes = make(map[string][]constant.EndpointType)
-	modelSupportEndpointsLock = sync.RWMutex{}
+	modelSupportEndpointTypes      = make(map[string][]constant.EndpointType)
+	groupModelSupportEndpointTypes = make(map[string]map[string][]constant.EndpointType)
+	modelSupportEndpointsLock      = sync.RWMutex{}
 )
 
 func GetPricing() []Pricing {
@@ -117,6 +119,23 @@ func GetModelSupportEndpointTypes(model string) []constant.EndpointType {
 		return endpoints
 	}
 	return make([]constant.EndpointType, 0)
+}
+
+// GetModelSupportEndpointTypesForGroups unions only the enabled channels in
+// the selected groups. Global catalog declarations cannot expand a channel's
+// configured endpoint capabilities in another group.
+func GetModelSupportEndpointTypesForGroups(model string, groups []string) []constant.EndpointType {
+	modelSupportEndpointsLock.RLock()
+	defer modelSupportEndpointsLock.RUnlock()
+	endpoints := make([]constant.EndpointType, 0)
+	for _, group := range groups {
+		for _, endpoint := range groupModelSupportEndpointTypes[group][model] {
+			if !slices.Contains(endpoints, endpoint) {
+				endpoints = append(endpoints, endpoint)
+			}
+		}
+	}
+	return endpoints
 }
 
 func getPricingEndpointTypesForAbility(ability AbilityWithChannel, advancedCustomConfigs map[int]*dto.AdvancedCustomConfig) []constant.EndpointType {
@@ -241,20 +260,30 @@ func updatePricing() {
 	//这里使用切片而不是Set，因为一个模型可能支持多个端点类型，并且第一个端点是优先使用端点
 	modelSupportEndpointsStr := make(map[string][]string)
 	advancedCustomConfigs := loadPricingAdvancedCustomConfigs(enableAbilities)
+	groupModelSupportEndpointTypes = make(map[string]map[string][]constant.EndpointType)
 
 	// 先根据已有能力填充原生端点
 	for _, ability := range enableAbilities {
 		endpoints := modelSupportEndpointsStr[ability.Model]
 		channelTypes := getPricingEndpointTypesForAbility(ability, advancedCustomConfigs)
+		if groupModelSupportEndpointTypes[ability.Group] == nil {
+			groupModelSupportEndpointTypes[ability.Group] = make(map[string][]constant.EndpointType)
+		}
+		groupEndpoints := groupModelSupportEndpointTypes[ability.Group][ability.Model]
 		for _, channelType := range channelTypes {
 			if !common.StringsContains(endpoints, string(channelType)) {
 				endpoints = append(endpoints, string(channelType))
 			}
+			if !slices.Contains(groupEndpoints, channelType) {
+				groupEndpoints = append(groupEndpoints, channelType)
+			}
 		}
 		modelSupportEndpointsStr[ability.Model] = endpoints
+		groupModelSupportEndpointTypes[ability.Group][ability.Model] = groupEndpoints
 	}
 
 	// 再补充模型自定义端点：若配置有效则追加到已有推断，不再裁剪渠道真实能力
+	customEndpointTypes := make(map[string][]constant.EndpointType)
 	for modelName, meta := range metaMap {
 		if strings.TrimSpace(meta.Endpoints) == "" {
 			continue
@@ -266,12 +295,27 @@ func updatePricing() {
 				switch v.(type) {
 				case string, map[string]any:
 					endpoints = appendPricingEndpoint(endpoints, k)
+					customEndpointTypes[modelName] = append(customEndpointTypes[modelName], constant.EndpointType(k))
 				}
 			}
 			if len(endpoints) > 0 {
 				modelSupportEndpointsStr[modelName] = endpoints
 			}
 		}
+	}
+	// Native compatible channels also serve catalog-declared aliases. Explicit
+	// Advanced Custom routes remain authoritative for their own capabilities.
+	for _, ability := range enableAbilities {
+		if ability.ChannelType == constant.ChannelTypeAdvancedCustom {
+			continue
+		}
+		endpoints := groupModelSupportEndpointTypes[ability.Group][ability.Model]
+		for _, endpoint := range customEndpointTypes[ability.Model] {
+			if !slices.Contains(endpoints, endpoint) {
+				endpoints = append(endpoints, endpoint)
+			}
+		}
+		groupModelSupportEndpointTypes[ability.Group][ability.Model] = endpoints
 	}
 
 	modelSupportEndpointTypes = make(map[string][]constant.EndpointType)

@@ -37,6 +37,8 @@ export interface Message {
   completedAt?: number
   durationMs?: number
   sources?: { href: string; title: string }[]
+  images?: string[]
+  imageGeneration?: ImageGenerationRequest
   reasoning?: {
     content: string
     duration: number
@@ -77,6 +79,35 @@ export interface ChatCompletionRequest {
   presence_penalty?: number
   seed?: number
 }
+
+export interface ImageGenerationRequest {
+  model: string
+  group: string
+  prompt: string
+  stream: true
+  size?: string
+  quality?: string
+  n: number
+}
+
+export interface ImageSettings {
+  ratio:
+    | 'auto'
+    | '1:1'
+    | '3:2'
+    | '2:3'
+    | '16:9'
+    | '9:16'
+    | '4:3'
+    | '3:4'
+    | '21:9'
+  resolution: '1K' | '2K' | '4K'
+  quality: 'auto' | 'low' | 'medium' | 'high'
+  count: number
+  style: 'none' | 'cinematic' | 'illustration' | 'product' | 'watercolor'
+}
+
+export type PlaygroundMode = 'chat' | 'image'
 
 export interface ChatCompletionChunk {
   id: string
@@ -126,6 +157,7 @@ export interface PlaygroundConfig {
   presence_penalty: number
   seed: number | null
   stream: boolean
+  image?: Partial<ImageSettings>
 }
 
 export interface ParameterEnabled {
@@ -141,6 +173,7 @@ export interface ParameterEnabled {
 export interface ModelOption {
   label: string
   value: string
+  endpoints?: string[]
 }
 
 export interface GroupOption {

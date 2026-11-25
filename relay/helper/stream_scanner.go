@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
@@ -156,6 +157,10 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	generalSettings := operation_setting.GetGeneralSetting()
 	pingEnabled := generalSettings.PingIntervalEnabled && !info.DisablePing
 	pingInterval := time.Duration(generalSettings.PingIntervalSeconds) * time.Second
+	if info.IsPlayground && info.RelayFormat == types.RelayFormatOpenAIImage && !info.DisablePing {
+		pingEnabled = true
+		pingInterval = DefaultPingInterval
+	}
 	if pingInterval <= 0 {
 		pingInterval = DefaultPingInterval
 	}

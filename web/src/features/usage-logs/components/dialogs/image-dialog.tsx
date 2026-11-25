@@ -102,11 +102,13 @@ export function ImageDialog({
           </div>
 
           {/* Image URL */}
-          <div className='bg-muted mt-4 rounded-md p-3'>
-            <p className='text-muted-foreground font-mono text-xs break-all'>
-              {imageUrl}
-            </p>
-          </div>
+          {/^https?:\/\//i.test(imageUrl) && (
+            <div className='bg-muted mt-4 rounded-md p-3'>
+              <p className='text-muted-foreground font-mono text-xs break-all'>
+                {imageUrl}
+              </p>
+            </div>
+          )}
         </div>
       </ScrollArea>
     </Dialog>

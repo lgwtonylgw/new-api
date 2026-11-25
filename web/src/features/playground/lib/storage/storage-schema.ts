@@ -34,6 +34,29 @@ export const playgroundConfigSchema = z.object({
   presence_penalty: z.number().optional(),
   seed: z.number().nullable().optional(),
   stream: z.boolean().optional(),
+  image: z
+    .object({
+      ratio: z
+        .enum([
+          'auto',
+          '1:1',
+          '3:2',
+          '2:3',
+          '16:9',
+          '9:16',
+          '4:3',
+          '3:4',
+          '21:9',
+        ])
+        .optional(),
+      resolution: z.enum(['1K', '2K', '4K']).optional(),
+      quality: z.enum(['auto', 'low', 'medium', 'high']).optional(),
+      count: z.number().int().min(1).max(10).optional(),
+      style: z
+        .enum(['none', 'cinematic', 'illustration', 'product', 'watercolor'])
+        .optional(),
+    })
+    .optional(),
 })
 
 export const parameterEnabledSchema = z.object({
@@ -80,6 +103,25 @@ const messageSchema = z.object({
   completedAt: z.number().optional(),
   durationMs: z.number().optional(),
   sources: z.array(sourceSchema).optional(),
+  images: z
+    .array(
+      z
+        .string()
+        .regex(/^https?:\/\//i)
+        .max(4096)
+    )
+    .optional(),
+  imageGeneration: z
+    .object({
+      model: z.string(),
+      group: z.string(),
+      prompt: z.string(),
+      stream: z.literal(true),
+      n: z.number().int().min(1).max(10),
+      size: z.string().optional(),
+      quality: z.string().optional(),
+    })
+    .optional(),
   reasoning: reasoningSchema.optional(),
   isReasoningStreaming: z.boolean().optional(),
   isReasoningComplete: z.boolean().optional(),

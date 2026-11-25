@@ -702,6 +702,7 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
               key={group.value}
               onClick={() => handleGroupChange(group.value)}
               ref={isSelected ? selectedGroupOptionRef : undefined}
+              title={group.label}
               type='button'
             >
               <span className='min-w-0 truncate font-medium'>

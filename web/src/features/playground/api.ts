@@ -16,13 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { api } from '@/lib/api'
+import { api, getFreshAuthHeaders } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { API_ENDPOINTS } from './constants'
+import { readImageGenerationResponse } from './lib/streaming/image-response'
 import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
+  ImageGenerationRequest,
   ModelOption,
   GroupOption,
 } from './types'
@@ -46,7 +48,7 @@ export async function sendChatCompletion(
  */
 export async function getUserModels(group: string): Promise<ModelOption[]> {
   const res = await api.get(API_ENDPOINTS.USER_MODELS, {
-    params: { group },
+    params: { group, include_endpoints: true },
   })
   const { data } = res
   requireServerSuccess(data)
@@ -58,7 +60,22 @@ export async function getUserModels(group: string): Promise<ModelOption[]> {
   return data.data.map((model: string) => ({
     label: model,
     value: model,
+    endpoints: data.model_endpoints?.[model] ?? [],
   }))
+}
+
+export async function sendImageGeneration(
+  payload: ImageGenerationRequest,
+  signal: AbortSignal
+): Promise<string[]> {
+  const headers = await getFreshAuthHeaders()
+  const response = await fetch(API_ENDPOINTS.IMAGE_GENERATIONS, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal,
+  })
+  return readImageGenerationResponse(response)
 }
 
 /**

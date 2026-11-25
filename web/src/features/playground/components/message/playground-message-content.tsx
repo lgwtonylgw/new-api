@@ -49,6 +49,8 @@ import {
 } from '../../lib'
 import { getMessageContentStyles } from '../../lib/message/message-styles'
 import type { Message } from '../../types'
+import { GeneratedImageResult } from './generated-image-result'
+import { ImageGenerationStatus } from './image-generation-status'
 import { MessageError } from './message-error'
 import { MessageMetadata } from './message-metadata'
 
@@ -83,6 +85,9 @@ export function PlaygroundMessageContent({
   const isMessageFinal =
     message.status !== MESSAGE_STATUS.LOADING &&
     message.status !== MESSAGE_STATUS.STREAMING
+  const hasImageResult =
+    Boolean(message.images?.length) ||
+    (isMessageFinal && Boolean(message.imageGeneration))
 
   return (
     <div
@@ -117,7 +122,10 @@ export function PlaygroundMessageContent({
         </Reasoning>
       )}
 
-      {showLoader && (
+      {showLoader && message.imageGeneration && (
+        <ImageGenerationStatus startedAt={message.startedAt} />
+      )}
+      {showLoader && !message.imageGeneration && (
         <div className='flex items-center gap-2 py-2'>
           <Loader />
           <Shimmer className='text-sm' duration={1}>
@@ -134,29 +142,36 @@ export function PlaygroundMessageContent({
         </>
       )}
 
-      {!isError && showMessageContent && (
+      {!isError && (showMessageContent || hasImageResult) && (
         <>
-          {isSourceVisible ? (
-            <CodeBlock
-              code={versionContent}
-              className='my-0 group-[.is-assistant]:w-full group-[.is-assistant]:max-w-[78ch]'
-              collapsedLines={24}
-              defaultCollapsed={false}
-              language='markdown'
-              maxExpandedLines={48}
-              showLineNumbers
-              showToolbar
-              title={t('Raw response')}
-            >
-              <CodeBlockCopyButton />
-            </CodeBlock>
-          ) : (
-            <MessageContent
-              variant='flat'
-              className={cn(getMessageContentStyles())}
-            >
-              <Response final={isMessageFinal}>{displayContent}</Response>
-            </MessageContent>
+          {showMessageContent &&
+            (isSourceVisible ? (
+              <CodeBlock
+                code={versionContent}
+                className='my-0 group-[.is-assistant]:w-full group-[.is-assistant]:max-w-[78ch]'
+                collapsedLines={24}
+                defaultCollapsed={false}
+                language='markdown'
+                maxExpandedLines={48}
+                showLineNumbers
+                showToolbar
+                title={t('Raw response')}
+              >
+                <CodeBlockCopyButton />
+              </CodeBlock>
+            ) : (
+              <MessageContent
+                variant='flat'
+                className={cn(getMessageContentStyles())}
+              >
+                <Response final={isMessageFinal}>{displayContent}</Response>
+              </MessageContent>
+            ))}
+          {hasImageResult && (
+            <GeneratedImageResult
+              images={message.images ?? []}
+              request={message.imageGeneration}
+            />
           )}
           <MessageMetadata alignment={alignment} message={message} />
           {actions}

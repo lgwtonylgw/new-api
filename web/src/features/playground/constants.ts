@@ -35,6 +35,7 @@ export const MESSAGE_STATUS = {
 // API endpoints
 export const API_ENDPOINTS = {
   CHAT_COMPLETIONS: '/pg/chat/completions',
+  IMAGE_GENERATIONS: '/pg/images/generations',
   USER_MODELS: '/api/user/models',
   USER_GROUPS: '/api/user/self/groups',
 } as const
@@ -80,6 +81,7 @@ export const ERROR_MESSAGES = {
   STREAM_START_ERROR: 'Error establishing connection',
   CONNECTION_CLOSED: 'Connection closed',
   INTERRUPTED: 'Generation was interrupted',
+  EMPTY_IMAGE: 'No image was returned',
 } as const
 
 // Message action button styles

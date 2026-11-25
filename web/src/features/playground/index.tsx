@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useState } from 'react'
+
 import { PlaygroundChat } from './components/chat/playground-chat'
 import { PlaygroundInput } from './components/input/playground-input'
 import {
@@ -24,25 +26,53 @@ import {
   usePlaygroundOptions,
   usePlaygroundState,
 } from './hooks'
+import type { PlaygroundMode } from './types'
 
 export function Playground() {
+  const [draft, setDraft] = useState('')
   const {
     config,
     parameterEnabled,
     messages,
     isLoadingMessages,
-    models,
     groups,
     updateMessages,
-    setModels,
     setGroups,
     updateConfig,
     updateParameterEnabled,
     clearMessages,
   } = usePlaygroundState()
 
+  const { isLoadingModels, availableModels: models } = usePlaygroundOptions({
+    currentGroup: config.group,
+    currentModel: config.model,
+    setGroups,
+    updateConfig,
+  })
+
+  const [modePreference, setModePreference] = useState<{
+    group: string
+    model: string
+    mode: PlaygroundMode
+  }>()
+  const endpoints = models.find(
+    (option) => option.value === config.model
+  )?.endpoints
+  const supportsImage = endpoints?.includes('image-generation') ?? false
+  const canSwitchMode =
+    supportsImage && (endpoints?.includes('openai') ?? false)
+  let mode: PlaygroundMode = supportsImage ? 'image' : 'chat'
+  if (
+    canSwitchMode &&
+    modePreference?.group === config.group &&
+    modePreference.model === config.model
+  ) {
+    mode = modePreference.mode
+  }
+
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,
+    mode,
     parameterEnabled,
     onMessageUpdate: updateMessages,
   })
@@ -66,25 +96,18 @@ export function Playground() {
     clearMessages()
   }
 
-  const { isLoadingModels } = usePlaygroundOptions({
-    currentGroup: config.group,
-    currentModel: config.model,
-    setGroups,
-    setModels,
-    updateConfig,
-  })
-
   return (
     <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
       {/* Full-width scroll container: scrolling works even over side whitespace */}
       <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
         <PlaygroundChat
+          mode={mode}
           messages={messages}
           isLoadingMessages={isLoadingMessages}
           onRegenerateMessage={handleRegenerateMessage}
           onEditMessage={handleEditMessage}
           onDeleteMessage={handleDeleteMessage}
-          onSelectPrompt={handleSendMessage}
+          onSelectPrompt={mode === 'image' ? setDraft : handleSendMessage}
           isGenerating={isGenerating}
           editingKey={editingMessageKey}
           onCancelEdit={handleEditOpenChange}
@@ -96,6 +119,8 @@ export function Playground() {
       {/* Input area: center content and constrain to the same container width */}
       <div className='mx-auto w-full max-w-4xl'>
         <PlaygroundInput
+          value={draft}
+          onValueChange={setDraft}
           config={config}
           disabled={isGenerating}
           groups={groups}
@@ -104,6 +129,15 @@ export function Playground() {
           isModelLoading={isLoadingModels}
           modelValue={config.model}
           models={models}
+          mode={mode}
+          canSwitchMode={canSwitchMode}
+          onModeChange={(value) =>
+            setModePreference({
+              model: config.model,
+              group: config.group,
+              mode: value,
+            })
+          }
           onGroupChange={(value) => updateConfig('group', value)}
           onConfigChange={updateConfig}
           onClearMessages={handleClearMessages}

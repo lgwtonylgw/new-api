@@ -280,6 +280,26 @@ func openaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 
 	info.UpdateImageCount(openaiImageResponseCount(responseBody))
 
+	info.SetFirstResponseTime()
+	emitted, writeErr := WriteImageJSONStream(c, responseBody, &usageResp.Usage)
+	if writeErr != nil {
+		if info.StreamStatus != nil {
+			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, writeErr)
+		}
+		return &usageResp.Usage, nil
+	}
+	info.ReceivedResponseCount += emitted
+	if info.StreamStatus == nil {
+		info.StreamStatus = relaycommon.NewStreamStatus()
+	}
+	info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
+	return &usageResp.Usage, nil
+}
+
+// WriteImageJSONStream frames a completed OpenAI-format JSON image response
+// as SSE without changing billing or deriving usage from the image payloads.
+// A nil usage preserves presentation-only callers such as the playground.
+func WriteImageJSONStream(c *gin.Context, responseBody []byte, usage *dto.Usage) (int, error) {
 	helper.SetEventStreamHeaders(c)
 	c.Status(http.StatusOK)
 
@@ -287,16 +307,13 @@ func openaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 	if created == 0 {
 		created = time.Now().Unix()
 	}
-	if info != nil {
-		info.SetFirstResponseTime()
-	}
-
-	validUsage := service.ValidUsage(&usageResp.Usage)
+	validUsage := service.ValidUsage(usage)
 	var usageJSON []byte
+	var err error
 	if validUsage {
-		usageJSON, err = common.Marshal(usageResp.Usage)
+		usageJSON, err = common.Marshal(usage)
 		if err != nil {
-			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+			return 0, err
 		}
 	}
 
@@ -312,12 +329,12 @@ func openaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 		payload := []byte(`{"type":"image_generation.completed"}`)
 		payload, err = sjson.SetBytes(payload, "created_at", created)
 		if err != nil {
-			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+			return emitted, err
 		}
 		if validUsage {
 			payload, err = sjson.SetRawBytes(payload, "usage", usageJSON)
 			if err != nil {
-				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+				return emitted, err
 			}
 		}
 		// b64_json goes last: every sjson.Set* reallocates the whole payload,
@@ -334,31 +351,15 @@ func openaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 			}
 			payload, err = sjson.SetRawBytes(payload, field, raw)
 			if err != nil {
-				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+				return emitted, err
 			}
 		}
 		if writeErr := helper.ResponseChunkData(c, dto.ResponsesStreamResponse{Type: "image_generation.completed"}, string(payload)); writeErr != nil {
-			if info != nil && info.StreamStatus != nil {
-				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, writeErr)
-			}
-			return &usageResp.Usage, nil
+			return emitted, writeErr
 		}
 		emitted++
 	}
-	if err := writeOpenaiImageStreamDone(c); err != nil {
-		if info != nil && info.StreamStatus != nil {
-			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, err)
-		}
-		return &usageResp.Usage, nil
-	}
-	if info != nil {
-		info.ReceivedResponseCount += emitted
-		if info.StreamStatus == nil {
-			info.StreamStatus = relaycommon.NewStreamStatus()
-		}
-		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
-	}
-	return &usageResp.Usage, nil
+	return emitted, writeOpenaiImageStreamDone(c)
 }
 
 func writeOpenaiImageStreamDone(c *gin.Context) error {

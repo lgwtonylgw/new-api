@@ -21,7 +21,7 @@ import { useTranslation } from 'react-i18next'
 
 import { handleServerError } from '@/lib/handle-server-error'
 
-import { sendChatCompletion } from '../api'
+import { sendChatCompletion, sendImageGeneration } from '../api'
 import { ERROR_MESSAGES } from '../constants'
 import {
   applyStreamingChunk,
@@ -31,15 +31,24 @@ import {
   parseRequestErrorDetails,
   applyChatCompletionResponse,
   completeAssistantMessage,
+  getMessageContent,
   hasChatCompletionChoice,
   isAssistantMessageFinal,
   isAssistantMessagePending,
 } from '../lib'
-import type { Message, PlaygroundConfig, ParameterEnabled } from '../types'
+import { buildImageGenerationPayload } from '../lib/image/image-generation'
+import { getPreviousUserMessage } from '../lib/message/conversation-message-utils'
+import type {
+  Message,
+  PlaygroundConfig,
+  ParameterEnabled,
+  PlaygroundMode,
+} from '../types'
 import { useStreamRequest } from './use-stream-request'
 
 interface UseChatHandlerOptions {
   config: PlaygroundConfig
+  mode?: PlaygroundMode
   parameterEnabled: ParameterEnabled
   onMessageUpdate: (updater: (prev: Message[]) => Message[]) => void
 }
@@ -69,6 +78,7 @@ function mergePendingStreamChunk(
  */
 export function useChatHandler({
   config,
+  mode = 'chat',
   parameterEnabled,
   onMessageUpdate,
 }: UseChatHandlerOptions) {
@@ -346,16 +356,72 @@ export function useChatHandler({
     ]
   )
 
-  // Send chat request (stream or non-stream based on config)
+  const sendImage = useCallback(
+    async (messages: Message[]) => {
+      const generation = requestGenerationRef.current + 1
+      const abortController = new AbortController()
+      requestGenerationRef.current = generation
+      stopStream()
+      discardPendingStreamUpdates(generation)
+      abortControllerRef.current?.abort()
+      abortControllerRef.current = abortController
+      const userMessage = getPreviousUserMessage(messages, messages.length)
+      const prompt = userMessage ? getMessageContent(userMessage).trim() : ''
+      const isCurrent = () =>
+        requestGenerationRef.current === generation &&
+        !abortController.signal.aborted
+      try {
+        setIsRequesting(true)
+        const payload = buildImageGenerationPayload(prompt, config)
+        onMessageUpdate((prev) => {
+          if (!isCurrent()) return prev
+          return updateLastAssistantMessage(prev, (message) => ({
+            ...message,
+            imageGeneration: payload,
+          }))
+        })
+        const images = await sendImageGeneration(
+          payload,
+          abortController.signal
+        )
+        if (!isCurrent()) return
+        onMessageUpdate((prev) => {
+          if (!isCurrent()) return prev
+          return updateLastAssistantMessage(prev, (message) =>
+            completeAssistantMessage({ ...message, images })
+          )
+        })
+      } catch (error: unknown) {
+        if (!isCurrent()) return
+        const { errorCode, errorMessage } = parseRequestErrorDetails(error)
+        handleStreamError(generation, errorMessage, errorCode)
+      } finally {
+        if (requestGenerationRef.current === generation) {
+          abortControllerRef.current = null
+          setIsRequesting(false)
+        }
+      }
+    },
+    [
+      config,
+      stopStream,
+      discardPendingStreamUpdates,
+      onMessageUpdate,
+      handleStreamError,
+    ]
+  )
+
   const sendChat = useCallback(
     (messages: Message[]) => {
-      if (config.stream) {
+      if (mode === 'image') {
+        void sendImage(messages)
+      } else if (config.stream) {
         sendStreamingChat(messages)
       } else {
         sendNonStreamingChat(messages)
       }
     },
-    [config.stream, sendStreamingChat, sendNonStreamingChat]
+    [mode, config.stream, sendImage, sendStreamingChat, sendNonStreamingChat]
   )
 
   // Stop generation
@@ -371,17 +437,27 @@ export function useChatHandler({
     setIsRequesting(false)
     onMessageUpdate((prev) => {
       if (requestGenerationRef.current !== idleGeneration) return prev
-      return updateLastAssistantMessage(prev, (message) =>
-        isAssistantMessagePending(message)
-          ? completeAssistantMessage(message)
-          : message
-      )
+      return updateLastAssistantMessage(prev, (message) => {
+        if (!isAssistantMessagePending(message)) return message
+        const completed = completeAssistantMessage(message)
+        if (!message.imageGeneration) return completed
+        return {
+          ...completed,
+          status: 'error',
+          errorCode: 'generation_interrupted',
+          versions: message.versions.map((version) => ({
+            ...version,
+            content: t(ERROR_MESSAGES.INTERRUPTED),
+          })),
+        }
+      })
     })
   }, [
     stopStream,
     flushStreamUpdates,
     discardPendingStreamUpdates,
     onMessageUpdate,
+    t,
   ])
 
   return {

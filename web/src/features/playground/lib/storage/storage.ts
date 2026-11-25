@@ -101,7 +101,9 @@ function getMessageSize(message: Message): number {
   )
   const reasoningSize = message.reasoning?.content.length ?? 0
 
-  return versionsSize + reasoningSize
+  return (
+    versionsSize + reasoningSize + (message.imageGeneration?.prompt.length ?? 0)
+  )
 }
 
 function truncateText(text: string, maxLength: number): string {
@@ -374,7 +376,14 @@ export function loadMessages(): Message[] | null {
  */
 export function saveMessages(messages: Message[]): void {
   try {
-    const trimmed = trimMessages(messages)
+    const trimmed = trimMessages(messages).map((message) => {
+      if (!message.images) return message
+      // Large inline images would exceed the conversation's localStorage budget.
+      const images = message.images.filter(
+        (src) => /^https?:\/\//i.test(src) && src.length <= 4096
+      )
+      return { ...message, images: images.length ? images : undefined }
+    })
     const parsed = messagesSchema.parse(trimmed) as Message[]
     writeStoredValue(STORAGE_KEYS.MESSAGES, parsed)
   } catch (error) {

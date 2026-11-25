@@ -324,6 +324,10 @@ func PrepareTaskPluginRoute() gin.HandlerFunc {
 // through so the existing endpoint remains responsible for its validation.
 func PinTaskPluginEndpoint() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		requestPath := c.Request.URL.Path
+		if requestPath == "/pg/images/generations" {
+			requestPath = "/v1/images/generations"
+		}
 		generation := pluginruntime.DefaultRegistry.Generation()
 		if generation == nil {
 			c.Next()
@@ -332,7 +336,7 @@ func PinTaskPluginEndpoint() gin.HandlerFunc {
 
 		modelRequest, err := getModelFromRequest(c)
 		if err != nil {
-			if _, _, protocolPath := pluginruntime.LookupHostProtocolOperation(c.Request.Method, c.Request.URL.Path); protocolPath {
+			if _, _, protocolPath := pluginruntime.LookupHostProtocolOperation(c.Request.Method, requestPath); protocolPath {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, "Invalid task protocol request")
 				return
 			}
@@ -368,7 +372,7 @@ func PinTaskPluginEndpoint() gin.HandlerFunc {
 				rewriteTo = target.Alias
 			}
 		}
-		binding, found := generation.LookupEndpoint(c.Request.Method, c.Request.URL.Path, lookupModel)
+		binding, found := generation.LookupEndpoint(c.Request.Method, requestPath, lookupModel)
 		if !found || binding.Plugin == nil {
 			c.Set(contextKeyTaskPluginEndpointModel, *modelRequest)
 			c.Next()
@@ -382,7 +386,7 @@ func PinTaskPluginEndpoint() gin.HandlerFunc {
 		}
 		modelRequest.Model = pinModel
 		c.Set(contextKeyTaskPluginEndpointModel, *modelRequest)
-		candidates := generation.LookupEndpointCandidates(c.Request.Method, c.Request.URL.Path, lookupModel)
+		candidates := generation.LookupEndpointCandidates(c.Request.Method, requestPath, lookupModel)
 		if len(candidates) == 0 {
 			candidates = []pluginruntime.ProtocolBinding{binding}
 		}

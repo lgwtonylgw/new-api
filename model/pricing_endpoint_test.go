@@ -107,6 +107,56 @@ func TestPricingAdvancedCustomUsesConfiguredEndpointTypes(t *testing.T) {
 	}, byModel["gpt-4o"])
 }
 
+func TestModelEndpointsStayWithinSelectedGroups(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+	const modelName = "shared-playground-model"
+	insertPricingEndpointChannel(t, 501, constant.ChannelTypeAdvancedCustom, pricingEndpointAdvancedCustomConfig(
+		dto.AdvancedCustomRoute{IncomingPath: "/v1/chat/completions", UpstreamPath: "/chat"},
+	))
+	insertPricingEndpointChannel(t, 502, constant.ChannelTypeAdvancedCustom, pricingEndpointAdvancedCustomConfig(
+		dto.AdvancedCustomRoute{IncomingPath: "/v1/images/generations", UpstreamPath: "/images"},
+	))
+	insertPricingEndpointChannel(t, 503, constant.ChannelTypeOpenAI, dto.ChannelOtherSettings{})
+	require.NoError(t, DB.Create(&[]Ability{
+		{Group: "default", Model: modelName, ChannelId: 501, Enabled: true},
+		{Group: "vip", Model: modelName, ChannelId: 502, Enabled: true},
+		{Group: "default", Model: modelName, ChannelId: 502, Enabled: false},
+		{Group: "default", Model: "catalog-image-alias", ChannelId: 503, Enabled: true},
+	}).Error)
+	require.NoError(t, DB.Create(&[]Model{
+		{ModelName: modelName, Endpoints: `{"image-generation":"/v1/images/generations"}`, Status: 1, NameRule: NameRuleExact},
+		{ModelName: "catalog-image-alias", Endpoints: `{"image-generation":"/v1/images/generations"}`, Status: 1, NameRule: NameRuleExact},
+	}).Error)
+	pricingEndpointTypesByModel(t)
+	assert.ElementsMatch(t, []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeImageGeneration}, GetModelSupportEndpointTypes(modelName))
+	for _, tc := range []struct {
+		name   string
+		groups []string
+		want   []constant.EndpointType
+	}{
+		{name: "chat group", groups: []string{"default"}, want: []constant.EndpointType{constant.EndpointTypeOpenAI}},
+		{name: "image group", groups: []string{"vip"}, want: []constant.EndpointType{constant.EndpointTypeImageGeneration}},
+		{name: "auto group union", groups: []string{"vip", "default", "vip"}, want: []constant.EndpointType{constant.EndpointTypeImageGeneration, constant.EndpointTypeOpenAI}},
+		{name: "unavailable group", groups: []string{"missing"}, want: []constant.EndpointType{}},
+		{name: "no allowed groups", want: []constant.EndpointType{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, GetModelSupportEndpointTypesForGroups(modelName, tc.groups))
+		})
+	}
+	assert.ElementsMatch(t, []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeImageGeneration}, GetModelSupportEndpointTypesForGroups("catalog-image-alias", []string{"default"}))
+	assert.Empty(t, GetModelSupportEndpointTypesForGroups("catalog-image-alias", []string{"vip"}))
+	channel, err := GetChannelById(501, true)
+	require.NoError(t, err)
+	channel.SetOtherSettings(pricingEndpointAdvancedCustomConfig(
+		dto.AdvancedCustomRoute{IncomingPath: "/v1/responses", UpstreamPath: "/responses"},
+	))
+	require.NoError(t, DB.Model(&Channel{}).Where("id = ?", channel.Id).Update("settings", channel.OtherSettings).Error)
+	InitChannelCache()
+	GetPricing()
+	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIResponse}, GetModelSupportEndpointTypesForGroups(modelName, []string{"default"}))
+}
+
 func TestPricingModelMetadataEndpointsMergeWithAdvancedCustomInference(t *testing.T) {
 	resetPricingEndpointTestTables(t)
 

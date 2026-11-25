@@ -16,12 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useState, type ReactEventHandler } from 'react'
 import { useTranslation } from 'react-i18next'
 import { sanitizeImageSrc, type ImageNode } from 'stream-markdown-parser'
 
 type ResponseImageProps = {
-  node: ImageNode
+  node: Pick<ImageNode, 'src' | 'alt' | 'title'>
+  onLoad?: ReactEventHandler<HTMLImageElement>
 }
 
 export function ResponseImage(props: ResponseImageProps) {
@@ -43,6 +44,7 @@ export function ResponseImage(props: ResponseImageProps) {
       className='border-border/70 my-4 block h-auto max-h-96 max-w-full rounded-lg border object-contain'
       loading='lazy'
       onError={() => setHasError(true)}
+      onLoad={props.onLoad}
       src={src}
       title={props.node.title ?? undefined}
     />
