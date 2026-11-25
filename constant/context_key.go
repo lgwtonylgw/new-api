@@ -10,6 +10,8 @@ const (
 	ContextKeyOriginalModel    ContextKey = "original_model"
 	ContextKeyRequestStartTime ContextKey = "request_start_time"
 
+	ContextKeyPlaygroundImageStream ContextKey = "playground_image_stream"
+
 	/* token related keys */
 	ContextKeyTokenUnlimited         ContextKey = "token_unlimited_quota"
 	ContextKeyTokenKey               ContextKey = "token_key"

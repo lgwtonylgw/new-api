@@ -27,7 +27,10 @@ func TestPlaygroundImagePinsPluginAndPreservesSelectedGroup(t *testing.T) {
 	previousCacheEnabled := common.MemoryCacheEnabled
 	common.MemoryCacheEnabled = false
 	t.Cleanup(func() { common.MemoryCacheEnabled = previousCacheEnabled })
-	_, err := pluginruntime.DefaultRegistry.Register(imageProtocolTestPlugin, pluginruntime.Options{})
+	source := strings.Replace(imageProtocolTestPlugin,
+		"decodeRequest: function(ctx) {",
+		`decodeRequest: function(ctx) { if (ctx.stream || ctx.body.value.stream) throw new Error("stream is not supported");`, 1)
+	_, err := pluginruntime.DefaultRegistry.Register(source, pluginruntime.Options{})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, pluginruntime.DefaultRegistry.Unregister("image-bridge")) })
 	pluginChannel := &model.Channel{Id: 601, Type: constant.ChannelTypeTaskPlugin, Status: common.ChannelStatusEnabled, Group: "vip", Models: "image-model", Key: "test-key"}
@@ -41,19 +44,25 @@ func TestPlaygroundImagePinsPluginAndPreservesSelectedGroup(t *testing.T) {
 	for _, tc := range []struct {
 		name, model string
 		claimed     bool
+		native      bool
 	}{
 		{name: "claimed image", model: "image-model", claimed: true},
 		{name: "ordinary image", model: "gpt-image-2"},
+		{name: "native protocol still rejects streaming", model: "image-model", claimed: true, native: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			path := "/pg/images/generations"
+			if tc.native {
+				path = "/v1/images/generations"
+			}
 			engine := gin.New()
 			engine.Use(func(c *gin.Context) {
 				common.SetContextKey(c, constant.ContextKeyUsingGroup, "vip")
 				common.SetContextKey(c, constant.ContextKeyUserGroup, "vip")
 				c.Next()
 			})
-			engine.POST("/pg/images/generations", middleware.PinTaskPluginEndpoint(), middleware.PrepareTaskPluginEndpoint(), middleware.Distribute(), func(c *gin.Context) {
-				assert.Equal(t, "/pg/images/generations", c.Request.URL.Path)
+			engine.POST(path, middleware.PinTaskPluginEndpoint(), middleware.PrepareTaskPluginEndpoint(), middleware.Distribute(), func(c *gin.Context) {
+				assert.Equal(t, path, c.Request.URL.Path)
 				value, exists := c.Get(pluginruntime.ContextKeyPinnedEndpoint)
 				require.Equal(t, tc.claimed, exists)
 				if tc.claimed {
@@ -62,7 +71,10 @@ func TestPlaygroundImagePinsPluginAndPreservesSelectedGroup(t *testing.T) {
 					assert.Equal(t, pluginruntime.ProtocolOpenAIImage, pinned.Protocol)
 					assert.Equal(t, "image-model", pinned.Model)
 					request := c.MustGet(pluginruntime.ContextKeyProtocolRequest).(pluginruntime.ProtocolRequestContext)
-					assert.True(t, request.Stream)
+					assert.False(t, request.Stream)
+					assert.True(t, common.GetContextKeyBool(c, constant.ContextKeyPlaygroundImageStream))
+					assert.Equal(t, false, request.Body.(map[string]any)["value"].(map[string]any)["stream"])
+					assert.Equal(t, "a cat", request.Body.(map[string]any)["value"].(map[string]any)["prompt"])
 					assert.Equal(t, "vip", request.Body.(map[string]any)["value"].(map[string]any)["group"])
 					// An invalid bridge context must produce a protocol failure,
 					// rather than sending this claimed model to the Go adaptor.
@@ -72,10 +84,15 @@ func TestPlaygroundImagePinsPluginAndPreservesSelectedGroup(t *testing.T) {
 				}
 				RelayTaskPluginEndpoint(c, func(c *gin.Context) { c.Status(http.StatusNoContent) })
 			})
-			request := httptest.NewRequest(http.MethodPost, "/pg/images/generations", strings.NewReader(`{"model":"`+tc.model+`","group":"vip","prompt":"a cat","stream":true}`))
+			request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"`+tc.model+`","group":"vip","prompt":"a cat","stream":true}`))
 			request.Header.Set("Content-Type", "application/json")
 			recorder := httptest.NewRecorder()
 			engine.ServeHTTP(recorder, request)
+			if tc.native {
+				assert.Equal(t, http.StatusBadRequest, recorder.Code)
+				assert.Contains(t, recorder.Body.String(), "stream is not supported")
+				return
+			}
 			if tc.claimed {
 				assert.Equal(t, http.StatusInternalServerError, recorder.Code)
 				assert.Contains(t, recorder.Body.String(), "task_protocol_error")

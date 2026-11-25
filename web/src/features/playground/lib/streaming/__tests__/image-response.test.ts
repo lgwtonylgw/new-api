@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { readImageGenerationResponse } from '../image-response'
 
@@ -50,6 +50,31 @@ describe('playground image generation', () => {
     )
     await expect(readImageGenerationResponse(response)).rejects.toThrow(
       'Image generation failed'
+    )
+  })
+
+  test('delivers completed images before a later image fails', async () => {
+    const onImages = vi.fn()
+    const response = new Response(
+      'data: {"type":"image_generation.completed","url":"https://example.com/one.png"}\n\n' +
+        'data: {"error":{"message":"Second image failed"}}\n\n',
+      { headers: { 'Content-Type': 'text/event-stream' } }
+    )
+    await expect(readImageGenerationResponse(response, onImages)).rejects.toThrow(
+      'Second image failed'
+    )
+    expect(onImages).toHaveBeenCalledExactlyOnceWith([
+      'https://example.com/one.png',
+    ])
+  })
+
+  test('retains the upstream error message for typed error events', async () => {
+    const response = new Response(
+      'event: upstream_error\ndata: {"type":"upstream_error","message":"Provider overloaded"}\n\n',
+      { headers: { 'Content-Type': 'text/event-stream' } }
+    )
+    await expect(readImageGenerationResponse(response)).rejects.toThrow(
+      'Provider overloaded'
     )
   })
 })

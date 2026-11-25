@@ -382,7 +382,18 @@ export function useChatHandler({
         })
         const images = await sendImageGeneration(
           payload,
-          abortController.signal
+          abortController.signal,
+          (receivedImages) => {
+            if (!isCurrent()) return
+            onMessageUpdate((prev) => {
+              if (!isCurrent()) return prev
+              return updateLastAssistantMessage(prev, (message) => ({
+                ...message,
+                images: receivedImages,
+                status: 'streaming',
+              }))
+            })
+          }
         )
         if (!isCurrent()) return
         onMessageUpdate((prev) => {

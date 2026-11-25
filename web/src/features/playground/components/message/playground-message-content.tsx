@@ -142,6 +142,13 @@ export function PlaygroundMessageContent({
         </>
       )}
 
+      {hasImageResult && (!isError || Boolean(message.images?.length)) && (
+        <GeneratedImageResult
+          images={message.images ?? []}
+          request={message.imageGeneration}
+        />
+      )}
+
       {!isError && (showMessageContent || hasImageResult) && (
         <>
           {showMessageContent &&
@@ -167,12 +174,6 @@ export function PlaygroundMessageContent({
                 <Response final={isMessageFinal}>{displayContent}</Response>
               </MessageContent>
             ))}
-          {hasImageResult && (
-            <GeneratedImageResult
-              images={message.images ?? []}
-              request={message.imageGeneration}
-            />
-          )}
           <MessageMetadata alignment={alignment} message={message} />
           {actions}
         </>

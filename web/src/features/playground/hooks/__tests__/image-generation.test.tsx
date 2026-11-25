@@ -142,3 +142,45 @@ test('stopping an image request aborts waiting and late results do not overwrite
   expect(result.current.messages.at(-1)?.images).toBeUndefined()
   expect(result.current.isGenerating).toBe(false)
 })
+
+test('a failed later image keeps the image already received in the conversation', async () => {
+  let streamController!: ReadableStreamDefaultController<Uint8Array>
+  const encoder = new TextEncoder()
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController = controller
+      controller.enqueue(
+        encoder.encode(
+          'data: {"type":"image_generation.completed","url":"https://example.com/one.png"}\n\n'
+        )
+      )
+    },
+  })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })
+    )
+  )
+  const { result } = renderHook(useImageConversation)
+  act(() => result.current.sendChat(result.current.messages))
+  await waitFor(() =>
+    expect(result.current.messages.at(-1)?.images).toEqual([
+      'https://example.com/one.png',
+    ])
+  )
+  expect(result.current.isGenerating).toBe(true)
+  act(() => {
+    streamController.enqueue(
+      encoder.encode('data: {"error":{"message":"Second image failed"}}\n\n')
+    )
+    streamController.close()
+  })
+  await waitFor(() =>
+    expect(result.current.messages.at(-1)?.status).toBe('error')
+  )
+  expect(result.current.messages.at(-1)?.images).toEqual([
+    'https://example.com/one.png',
+  ])
+  expect(result.current.isGenerating).toBe(false)
+})

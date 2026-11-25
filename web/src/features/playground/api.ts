@@ -66,7 +66,8 @@ export async function getUserModels(group: string): Promise<ModelOption[]> {
 
 export async function sendImageGeneration(
   payload: ImageGenerationRequest,
-  signal: AbortSignal
+  signal: AbortSignal,
+  onImages?: (images: string[]) => void
 ): Promise<string[]> {
   const headers = await getFreshAuthHeaders()
   const response = await fetch(API_ENDPOINTS.IMAGE_GENERATIONS, {
@@ -75,7 +76,7 @@ export async function sendImageGeneration(
     body: JSON.stringify(payload),
     signal,
   })
-  return readImageGenerationResponse(response)
+  return readImageGenerationResponse(response, onImages)
 }
 
 /**

@@ -3,6 +3,7 @@ import { parseStreamErrorDetails } from './stream-utils'
 
 type ImagePayload = {
   type?: string
+  message?: string
   url?: unknown
   b64_json?: unknown
   data?: ImagePayload | ImagePayload[]
@@ -50,7 +51,8 @@ function collectImages(payload: ImagePayload): string[] {
 }
 
 async function readImageStream(
-  body: ReadableStream<Uint8Array>
+  body: ReadableStream<Uint8Array>,
+  onImages?: (images: string[]) => void
 ): Promise<string[]> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
@@ -76,13 +78,21 @@ async function readImageStream(
           throw new Error(parseStreamErrorDetails(data).errorMessage)
         }
         const payload = JSON.parse(data) as ImagePayload
-        if (payload.error) {
+        if (
+          payload.error ||
+          payload.type === 'error' ||
+          payload.type === 'upstream_error'
+        ) {
           throw new Error(
-            payload.error.message || ERROR_MESSAGES.API_REQUEST_ERROR
+            payload.error?.message ||
+              payload.message ||
+              ERROR_MESSAGES.API_REQUEST_ERROR
           )
         }
         if (payload.type === 'image_generation.completed') {
+          const previousSize = images.size
           for (const src of collectImages(payload)) images.add(src)
+          if (images.size !== previousSize) onImages?.([...images])
         }
       }
       if (done) return [...images]
@@ -94,7 +104,8 @@ async function readImageStream(
 }
 
 export async function readImageGenerationResponse(
-  response: Response
+  response: Response,
+  onImages?: (images: string[]) => void
 ): Promise<string[]> {
   if (!response.ok) {
     const text = await response.text()
@@ -111,13 +122,14 @@ export async function readImageGenerationResponse(
     response.headers.get('Content-Type')?.includes('text/event-stream') &&
     response.body
   ) {
-    images = await readImageStream(response.body)
+    images = await readImageStream(response.body, onImages)
   } else {
     const payload = (await response.json()) as ImagePayload
     if (payload.error) {
       throw new Error(payload.error.message || ERROR_MESSAGES.API_REQUEST_ERROR)
     }
     images = collectImages(payload)
+    if (images.length) onImages?.([...new Set(images)])
   }
   if (!images.length) throw new Error(ERROR_MESSAGES.EMPTY_IMAGE)
   return [...new Set(images)]

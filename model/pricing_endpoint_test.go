@@ -2,14 +2,50 @@ package model
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestPricingImageEndpointUsesBoundPluginProtocol(t *testing.T) {
+	registry := jsplugin.NewRegistry()
+	_, err := registry.Register(`
+export const meta = {apiVersion:1,key:"catalog-image",name:"Image",version:"1.0.0",author:{name:"Test"},models:["opaque-renderer"],upstreams:["new_api"],fetchMode:"per_task",protocols:["openai_image"]};
+export function buildSubmitRequest(ctx){return {url:ctx.baseUrl+"/images"};}
+export function parseSubmitResponse(){return {taskId:"vendor"};}
+export function buildQueryRequest(){return {url:"https://provider.example"};}
+export function parseTaskResult(){return {status:"SUCCESS"};}
+export const protocols = {openai_image:{decodeRequest:function(ctx){return {kind:"submit",model:ctx.model,requestBody:ctx.body.value};},render:function(){return {data:[]};}}};
+`, jsplugin.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, registry.Unregister("catalog-image")) })
+	for _, tc := range []struct {
+		name        string
+		channelType int
+		pluginKey   string
+		wantImage   bool
+		wantChat    bool
+	}{
+		{name: "bound image plugin", channelType: constant.ChannelTypeTaskPlugin, pluginKey: "catalog-image", wantImage: true},
+		{name: "unbound image plugin", channelType: constant.ChannelTypeTaskPlugin},
+		{name: "different plugin", channelType: constant.ChannelTypeTaskPlugin, pluginKey: "other"},
+		{name: "extended gateway", channelType: constant.ChannelTypeNewAPI, pluginKey: "catalog-image", wantImage: true, wantChat: true},
+		{name: "ordinary gateway", channelType: constant.ChannelTypeNewAPI, wantChat: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := map[int]dto.ChannelSettings{1: {TaskPluginKey: tc.pluginKey}}
+			endpoints := getPricingEndpointTypesForAbility(AbilityWithChannel{ChannelType: tc.channelType, Ability: Ability{Model: "opaque-renderer", ChannelId: 1}}, nil, settings, registry.Generation())
+			assert.Equal(t, tc.wantImage, slices.Contains(endpoints, constant.EndpointTypeImageGeneration))
+			assert.Equal(t, tc.wantChat, slices.Contains(endpoints, constant.EndpointTypeOpenAI))
+		})
+	}
+}
 
 func resetPricingEndpointTestTables(t *testing.T) {
 	t.Helper()

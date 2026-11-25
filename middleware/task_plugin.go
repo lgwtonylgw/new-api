@@ -379,7 +379,7 @@ func PinTaskPluginEndpoint() gin.HandlerFunc {
 			return
 		}
 		if rewriteTo != "" {
-			if rewriteErr := rewriteTaskPluginJSONModel(c, rewriteTo); rewriteErr != nil {
+			if rewriteErr := rewriteTaskPluginJSONField(c, "model", rewriteTo); rewriteErr != nil {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, "Invalid task protocol request")
 				return
 			}
@@ -524,6 +524,18 @@ func PrepareTaskPluginEndpoint() gin.HandlerFunc {
 		if !ok || pinned.Generation == nil || pinned.Plugin == nil {
 			abortWithOpenAiMessage(c, http.StatusInternalServerError, "Task protocol request failed")
 			return
+		}
+		// Playground SSE is a delivery format, not a request for the image
+		// plugin to stream. Normalize before candidate and final decoding so
+		// synchronous image plugins retain their ordinary protocol contract.
+		if c.Request.URL.Path == "/pg/images/generations" && pinned.Protocol == pluginruntime.ProtocolOpenAIImage {
+			if stream, _ := jsonBodyBoolFlags(c); stream {
+				if err := rewriteTaskPluginJSONField(c, "stream", false); err != nil {
+					abortWithOpenAiMessage(c, http.StatusBadRequest, "Invalid task protocol request")
+					return
+				}
+				common.SetContextKey(c, constant.ContextKeyPlaygroundImageStream, true)
+			}
 		}
 		logger.LogDebug(
 			c,
@@ -1451,7 +1463,7 @@ func PrepareTaskPluginSubmit() gin.HandlerFunc {
 				folded = target.Alias
 			}
 			if folded != "" {
-				if rewriteErr := rewriteTaskPluginJSONModel(c, folded); rewriteErr != nil {
+				if rewriteErr := rewriteTaskPluginJSONField(c, "model", folded); rewriteErr != nil {
 					c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": rewriteErr.Error(), "type": "invalid_request_error"}})
 					return
 				}

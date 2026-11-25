@@ -1,6 +1,7 @@
 package model
 
 import (
+	"net/http"
 	"slices"
 	"strings"
 	"sync"
@@ -138,14 +139,60 @@ func GetModelSupportEndpointTypesForGroups(model string, groups []string) []cons
 	return endpoints
 }
 
-func getPricingEndpointTypesForAbility(ability AbilityWithChannel, advancedCustomConfigs map[int]*dto.AdvancedCustomConfig) []constant.EndpointType {
-	if ability.ChannelType != constant.ChannelTypeAdvancedCustom {
+func getPricingEndpointTypesForAbility(ability AbilityWithChannel, advancedCustomConfigs map[int]*dto.AdvancedCustomConfig, pluginSettings map[int]dto.ChannelSettings, generation *jsplugin.RoutingGeneration) []constant.EndpointType {
+	if ability.ChannelType == constant.ChannelTypeAdvancedCustom {
+		if config := advancedCustomConfigs[ability.ChannelId]; config != nil {
+			return config.SupportedEndpointTypesForModel(ability.Model)
+		}
 		return common.GetEndpointTypesByChannelType(ability.ChannelType, ability.Model)
 	}
-	if config := advancedCustomConfigs[ability.ChannelId]; config != nil {
-		return config.SupportedEndpointTypesForModel(ability.Model)
+	endpoints := common.GetEndpointTypesByChannelType(ability.ChannelType, ability.Model)
+	if ability.ChannelType == constant.ChannelTypeTaskPlugin {
+		endpoints = nil
 	}
-	return common.GetEndpointTypesByChannelType(ability.ChannelType, ability.Model)
+	if generation == nil {
+		return endpoints
+	}
+	lookupModel := ability.Model
+	if declared, ok := generation.CanonicalModel(lookupModel); ok {
+		lookupModel = declared
+	} else if target, ok := ResolveTaskModelAlias(generation, lookupModel); ok && target.Declared != "" {
+		lookupModel = target.Declared
+	}
+	candidates := generation.LookupEndpointCandidates(http.MethodPost, "/v1/images/generations", lookupModel)
+	for _, candidate := range candidates {
+		if candidate.Plugin == nil {
+			continue
+		}
+		bound := slices.Contains(candidate.Plugin.Meta.ChannelTypes, ability.ChannelType)
+		if ability.ChannelType == constant.ChannelTypeTaskPlugin || ability.ChannelType == constant.ChannelTypeNewAPI {
+			settings, cached := pluginSettings[ability.ChannelId]
+			if !cached {
+				channel, err := CacheGetChannel(ability.ChannelId)
+				if err != nil {
+					continue
+				}
+				if channel.Setting != nil {
+					if err := common.UnmarshalJsonStr(*channel.Setting, &settings); err != nil {
+						settings = dto.ChannelSettings{}
+					}
+				}
+				pluginSettings[ability.ChannelId] = settings
+			}
+			bound = settings.BindsTaskPlugin(candidate.Plugin.Meta.Key)
+		}
+		if !bound {
+			continue
+		}
+		if ability.ChannelType == constant.ChannelTypeTaskPlugin {
+			return []constant.EndpointType{constant.EndpointTypeImageGeneration}
+		}
+		if !slices.Contains(endpoints, constant.EndpointTypeImageGeneration) {
+			endpoints = append([]constant.EndpointType{constant.EndpointTypeImageGeneration}, endpoints...)
+		}
+		break
+	}
+	return endpoints
 }
 
 // loadPricingAdvancedCustomConfigs runs inside updatePricing while
@@ -260,12 +307,14 @@ func updatePricing() {
 	//这里使用切片而不是Set，因为一个模型可能支持多个端点类型，并且第一个端点是优先使用端点
 	modelSupportEndpointsStr := make(map[string][]string)
 	advancedCustomConfigs := loadPricingAdvancedCustomConfigs(enableAbilities)
+	pluginGeneration := jsplugin.DefaultRegistry.Generation()
+	pluginSettings := make(map[int]dto.ChannelSettings)
 	groupModelSupportEndpointTypes = make(map[string]map[string][]constant.EndpointType)
 
 	// 先根据已有能力填充原生端点
 	for _, ability := range enableAbilities {
 		endpoints := modelSupportEndpointsStr[ability.Model]
-		channelTypes := getPricingEndpointTypesForAbility(ability, advancedCustomConfigs)
+		channelTypes := getPricingEndpointTypesForAbility(ability, advancedCustomConfigs, pluginSettings, pluginGeneration)
 		if groupModelSupportEndpointTypes[ability.Group] == nil {
 			groupModelSupportEndpointTypes[ability.Group] = make(map[string][]constant.EndpointType)
 		}
@@ -306,7 +355,7 @@ func updatePricing() {
 	// Native compatible channels also serve catalog-declared aliases. Explicit
 	// Advanced Custom routes remain authoritative for their own capabilities.
 	for _, ability := range enableAbilities {
-		if ability.ChannelType == constant.ChannelTypeAdvancedCustom {
+		if ability.ChannelType == constant.ChannelTypeAdvancedCustom || ability.ChannelType == constant.ChannelTypeTaskPlugin {
 			continue
 		}
 		endpoints := groupModelSupportEndpointTypes[ability.Group][ability.Model]
@@ -368,7 +417,6 @@ func updatePricing() {
 	}
 
 	pricingMap = make([]Pricing, 0)
-	pluginGeneration := jsplugin.DefaultRegistry.Generation()
 	for model, groups := range modelGroupsMap {
 		pricing := Pricing{
 			ModelName:              model,

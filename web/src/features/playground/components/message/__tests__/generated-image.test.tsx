@@ -149,3 +149,30 @@ test('a restored inline image record keeps its prompt and explains missing image
   expect(screen.getByText('Saved prompt')).toBeVisible()
   expect(screen.queryByRole('img')).not.toBeInTheDocument()
 })
+
+test('a partial generation still displays its completed image alongside the error', () => {
+  render(
+    <PlaygroundMessageContent
+      actions={null}
+      alignment='left'
+      versionContent='Second image failed'
+      message={{
+        key: 'partial',
+        from: 'assistant',
+        status: 'error',
+        versions: [{ id: 'v', content: 'Second image failed' }],
+        images: ['https://example.com/one.png'],
+        imageGeneration: {
+          model: 'gpt-image-2',
+          group: 'default',
+          prompt: 'A cat',
+          n: 2,
+          stream: true,
+        },
+      }}
+    />
+  )
+  expect(screen.getByRole('img', { name: 'Generated image 1' })).toBeVisible()
+  expect(screen.getByText(/Second image failed/)).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled()
+})
