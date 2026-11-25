@@ -31,6 +31,7 @@ import {
   getChatMessageRenderState,
   getEditingMessageContent,
   getMessageAlignment,
+  getMessageContent,
   getPreviousUserMessage,
   isErrorMessage,
 } from '../../lib'
@@ -129,6 +130,20 @@ export function PlaygroundChat({
       : null
     const alignment = getMessageAlignment(message, messageLayoutMode)
     const isSourceVisible = sourceMessageKeys.has(message.key)
+    const precedingMessage = messages[messageIndex - 1]
+    const imagePrompt =
+      mode === 'image' &&
+      message.imageGeneration &&
+      precedingMessage?.from === 'user'
+        ? getMessageContent(precedingMessage)
+        : ''
+    const submittedPrompt = message.imageGeneration?.prompt
+    const cleanPrompt = imagePrompt.trim()
+    const canReusePrompt =
+      !isGenerating &&
+      cleanPrompt &&
+      (submittedPrompt === cleanPrompt ||
+        submittedPrompt?.startsWith(`${cleanPrompt}\n\n`))
 
     return (
       <Message
@@ -166,6 +181,11 @@ export function PlaygroundChat({
               }
               isSourceVisible={isSourceVisible}
               message={message}
+              onReuseImagePrompt={
+                canReusePrompt && onSelectPrompt
+                  ? () => onSelectPrompt(imagePrompt)
+                  : undefined
+              }
               errorActions={
                 isError ? (
                   <MessageErrorActions
@@ -222,7 +242,9 @@ export function PlaygroundChat({
     <Conversation>
       {/* Remove outer padding; apply padding to inner centered container to align with input */}
       <ConversationContent className='p-0'>
-        <div className='mx-auto w-full max-w-4xl px-4 py-4'>{chatContent}</div>
+        <div className='mx-auto w-full max-w-4xl px-3 py-4 sm:px-4'>
+          {chatContent}
+        </div>
       </ConversationContent>
       <ConversationScrollButton />
     </Conversation>

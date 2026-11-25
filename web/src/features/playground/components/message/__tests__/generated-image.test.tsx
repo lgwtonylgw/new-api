@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, test, vi } from 'vitest'
 
+import type { Message } from '../../../types'
+import { PlaygroundChat } from '../../chat/playground-chat'
 import { PlaygroundMessageContent } from '../playground-message-content'
 
 const originalGetAnimations = Object.getOwnPropertyDescriptor(
@@ -82,10 +84,55 @@ test('image results retain generation parameters, actual dimensions and a full-s
   })
   fireEvent.load(image)
   expect(screen.getByText('3840 × 2160')).toBeVisible()
-  await user.click(
-    screen.getAllByRole('button', { name: 'Preview image 1' })[0]
-  )
+  await user.click(screen.getByRole('button', { name: 'Preview image 1' }))
   expect(await screen.findByRole('dialog')).toBeVisible()
+})
+
+test('reusing an image prompt hands the composer the original text without the preset suffix', async () => {
+  const user = userEvent.setup()
+  const onSelectPrompt = vi.fn()
+  const rawPrompt = 'A cat in a sunlit room'
+  const messages: Message[] = [
+    {
+      key: 'user',
+      from: 'user',
+      versions: [{ id: 'u', content: rawPrompt }],
+    },
+    {
+      key: 'image',
+      from: 'assistant',
+      status: 'complete',
+      versions: [{ id: 'v', content: '' }],
+      images: ['https://example.com/one.png'],
+      imageGeneration: {
+        model: 'gpt-image-2',
+        group: 'default',
+        prompt: `${rawPrompt}\n\nApply a cinematic aesthetic.`,
+        n: 1,
+        stream: true,
+      },
+    },
+  ]
+
+  const { rerender } = render(
+    <PlaygroundChat
+      mode='image'
+      messages={messages}
+      onSelectPrompt={onSelectPrompt}
+    />
+  )
+  expect(onSelectPrompt).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('button', { name: 'Reuse prompt' }))
+  expect(onSelectPrompt).toHaveBeenCalledExactlyOnceWith(rawPrompt)
+  rerender(
+    <PlaygroundChat
+      mode='image'
+      messages={messages}
+      isGenerating
+      onSelectPrompt={onSelectPrompt}
+    />
+  )
+  expect(screen.queryByRole('button', { name: 'Reuse prompt' })).toBeNull()
 })
 
 test('waiting for a long image request shows elapsed time and cancellation semantics', () => {

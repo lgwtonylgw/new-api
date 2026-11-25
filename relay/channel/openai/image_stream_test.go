@@ -15,6 +15,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -283,32 +284,31 @@ func (b *blockingBody) Close() error {
 	return nil
 }
 
-// cancelAfterWriter cancels the request context right after the payload
-// containing needle has been written to the client, simulating a client that
-// disconnects after receiving that event. Cancelling from the write side (not
-// the upstream read side) makes the abort deterministic: the handler has
-// already processed and counted the event when the disconnect fires.
+// cancelAfterWriter disconnects the client after flushing the chosen payload.
 type cancelAfterWriter struct {
 	gin.ResponseWriter
-	needle string
-	cancel context.CancelFunc
-	once   sync.Once
+	needle  string
+	cancel  context.CancelFunc
+	matched bool
 }
 
 func (w *cancelAfterWriter) Write(p []byte) (int, error) {
 	n, err := w.ResponseWriter.Write(p)
-	if strings.Contains(string(p), w.needle) {
-		w.once.Do(w.cancel)
-	}
+	w.matched = w.matched || strings.Contains(string(p), w.needle)
 	return n, err
 }
 
 func (w *cancelAfterWriter) WriteString(s string) (int, error) {
 	n, err := io.WriteString(w.ResponseWriter, s)
-	if strings.Contains(s, w.needle) {
-		w.once.Do(w.cancel)
-	}
+	w.matched = w.matched || strings.Contains(s, w.needle)
 	return n, err
+}
+
+func (w *cancelAfterWriter) Flush() {
+	w.ResponseWriter.Flush()
+	if w.matched {
+		w.cancel()
+	}
 }
 
 func newDisconnectingImageStream(t *testing.T, sseBody, disconnectAfter string) (*gin.Context, *httptest.ResponseRecorder, *http.Response, *relaycommon.RelayInfo) {
@@ -341,6 +341,7 @@ func TestOpenaiImageStreamHandlerClientDisconnectKeepsRequestedCount(t *testing.
 
 	body := "data: {\"type\":\"image_generation.completed\",\"b64_json\":\"first\"}\n\n"
 	c, recorder, resp, info := newDisconnectingImageStream(t, body, "first")
+	info.IsPlayground = true
 	info.PriceData.UsePrice = true
 	info.PriceData.AddOtherRatio("n", 3)
 
@@ -356,6 +357,75 @@ func TestOpenaiImageStreamHandlerClientDisconnectKeepsRequestedCount(t *testing.
 		info.StreamStatus.EndReason)
 	require.Contains(t, recorder.Body.String(), `"b64_json":"first"`)
 	require.Equal(t, 3.0, info.PriceData.OtherRatios()["n"], "client abort must not reduce the billed image count")
+}
+
+func TestPlaygroundOpenAIImageFailsWithoutDeliveredImage(t *testing.T) {
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	for _, tc := range []struct {
+		name, contentType, body string
+		stream, cancel          bool
+	}{
+		{name: "empty SSE", contentType: "text/event-stream", stream: true, body: "data: [DONE]\n\n"},
+		{name: "completed event without image", contentType: "text/event-stream", stream: true, body: "data: {\"type\":\"image_generation.completed\"}\n\ndata: [DONE]\n\n"},
+		{name: "cancelled before output", contentType: "text/event-stream", stream: true, cancel: true},
+		{name: "empty JSON bridged to SSE", contentType: "application/json", stream: true, body: `{"data":[]}`},
+		{name: "empty JSON", contentType: "application/json", body: `{"data":[{"revised_prompt":"draw a cat"}]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, recorder, resp, info := newImageTestContext(t, tc.body, tc.contentType, tc.stream)
+			info.IsPlayground = true
+			if tc.cancel {
+				ctx, cancel := context.WithCancel(c.Request.Context())
+				cancel()
+				c.Request = c.Request.WithContext(ctx)
+			}
+
+			handler := OpenaiImageHandler
+			if tc.stream {
+				handler = OpenaiImageStreamHandler
+			}
+			usage, err := handler(c, info, resp)
+			require.Nil(t, usage)
+			require.NotNil(t, err)
+			require.Equal(t, types.ErrorCodeEmptyResponse, err.GetErrorCode())
+			require.NotContains(t, recorder.Body.String(), "[DONE]")
+		})
+	}
+}
+
+func TestPlaygroundOpenAIChatRejectsAnEmptyStreamBeforeSettlement(t *testing.T) {
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	for _, tc := range []struct {
+		name, body string
+		cancel     bool
+	}{
+		{name: "empty completion", body: "data: [DONE]\n\n"},
+		{name: "client disconnect", cancel: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, recorder, resp, info := newImageTestContext(t, tc.body, "text/event-stream", true)
+			info.IsPlayground = true
+			info.RelayFormat = types.RelayFormatOpenAI
+			info.ShouldIncludeUsage = true
+			if tc.cancel {
+				ctx, cancel := context.WithCancel(c.Request.Context())
+				cancel()
+				c.Request = c.Request.WithContext(ctx)
+			}
+
+			usage, err := OaiStreamHandler(c, info, resp)
+			require.Nil(t, usage)
+			require.NotNil(t, err)
+			require.Equal(t, types.ErrorCodeEmptyResponse, err.GetErrorCode())
+			require.NotContains(t, recorder.Body.String(), "[DONE]")
+		})
+	}
 }
 
 // TestOpenaiImageStreamHandlerClientDisconnectRaisesCount covers the other

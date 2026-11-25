@@ -16,10 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ImageIcon } from 'lucide-react'
+import { SlidersHorizontalIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { Badge } from '@/components/ui/badge'
+import { PromptInputButton } from '@/components/ai-elements/prompt-input'
+import { Button } from '@/components/ui/button'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTitle,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   Select,
   SelectContent,
@@ -30,6 +37,7 @@ import {
 } from '@/components/ui/select'
 
 import {
+  DEFAULT_IMAGE_SETTINGS,
   getImageSettings,
   getImageSize,
   IMAGE_SIZE_PRESETS,
@@ -101,18 +109,8 @@ export function PlaygroundImageSettings(props: PlaygroundImageSettingsProps) {
   ] as const
 
   return (
-    <section
-      aria-label={t('Image generation settings')}
-      className='border-border/60 bg-muted/20 grid gap-3 border-b px-4 py-3'
-    >
-      <div className='flex flex-wrap items-center gap-2'>
-        <ImageIcon aria-hidden='true' className='text-primary size-4' />
-        <span className='text-sm font-medium'>{t('Image studio')}</span>
-        <Badge variant='secondary' className='font-mono text-[10px]'>
-          {size ? size.replace('x', ' × ') : t('Automatic size')}
-        </Badge>
-      </div>
-      <div className='grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5'>
+    <section aria-label={t('Image generation settings')} className='grid gap-3'>
+      <div className='grid grid-cols-2 gap-x-3 gap-y-2.5'>
         {controls.map((control) => (
           <div className='grid min-w-0 gap-1.5' key={control.key}>
             <span className='text-muted-foreground text-xs'>
@@ -155,30 +153,63 @@ export function PlaygroundImageSettings(props: PlaygroundImageSettingsProps) {
           </div>
         ))}
       </div>
-      <p className='text-muted-foreground text-[11px] leading-5'>
-        {t(
-          'Each generation uses only your current prompt. Chat history and previous images are not sent.'
-        )}{' '}
+      <div className='flex flex-wrap items-center justify-between gap-1 border-t pt-2'>
+        <span className='text-muted-foreground text-xs tabular-nums'>
+          {size ? size.replace('x', ' × ') : t('Automatic size')}
+        </span>
+        <Button
+          size='sm'
+          variant='ghost'
+          type='button'
+          disabled={props.disabled}
+          onClick={() => props.onConfigChange('image', DEFAULT_IMAGE_SETTINGS)}
+        >
+          {t('Reset to default')}
+        </Button>
+      </div>
+      <p className='text-muted-foreground text-xs leading-relaxed'>
         {t(
           'More images, larger sizes and higher quality may increase cost and waiting time.'
         )}
-        {settings.resolution === '4K' && (
-          <>
-            {' '}
-            {t(
-              '4K tier adapts to the aspect ratio; the exact requested dimensions are shown above.'
-            )}
-          </>
-        )}
-        {settings.style !== 'none' && (
-          <>
-            {' '}
-            {t(
-              'The selected style adds instructions to your prompt. The full prompt is saved with the result.'
-            )}
-          </>
-        )}
       </p>
     </section>
+  )
+}
+
+export function PlaygroundImageSettingsPopover(
+  props: PlaygroundImageSettingsProps
+) {
+  const { t } = useTranslation()
+  const { ratio, count } = getImageSettings(props.config)
+
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <PromptInputButton
+            aria-label={t('Image generation settings')}
+            className='bg-muted/60 hover:bg-muted gap-1.5 rounded-lg px-2'
+            disabled={props.disabled}
+            size='sm'
+          />
+        }
+      >
+        <SlidersHorizontalIcon />
+        <span className='text-xs tabular-nums'>
+          {ratio === 'auto' ? t('Auto') : ratio} ·{' '}
+          {t('{{count}} images', { count })}
+        </span>
+      </PopoverTrigger>
+      <PopoverContent
+        side='top'
+        align='start'
+        sideOffset={8}
+        collisionPadding={8}
+        className='max-h-(--available-height) w-80 max-w-[calc(100vw-1rem)] gap-3 overflow-y-auto rounded-xl p-3.5'
+      >
+        <PopoverTitle>{t('Image generation settings')}</PopoverTitle>
+        <PlaygroundImageSettings {...props} />
+      </PopoverContent>
+    </Popover>
   )
 }

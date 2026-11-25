@@ -5597,6 +5597,7 @@
     "Returned keys": "返却したキー数",
     "Returned token IDs": "返されたトークン ID",
     "Returned: {{processed}}": "返却：{{processed}} 件",
+    "Reuse prompt": "プロンプトを再利用",
     "Reveal API key": "APIキーを表示",
     "Reveal full keys": "完全なキーを表示",
     "Reveal key": "キーを表示",

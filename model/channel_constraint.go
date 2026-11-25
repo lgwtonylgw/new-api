@@ -3,6 +3,7 @@ package model
 import (
 	"slices"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 )
@@ -94,10 +95,14 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 			return true
 		}
 		if !constant.IsAdvancedCustomChannel(ch.Type) {
-			return true
+			return filter.RequestPath != "/pg/chat/completions" || !common.IsImageGenerationModel(modelName)
 		}
 		config := ch.GetOtherSettings().AdvancedCustom
-		return config != nil && config.SupportsPathForModel(filter.RequestPath, modelName)
+		requestPath := filter.RequestPath
+		if requestPath == "/pg/chat/completions" {
+			requestPath = "/v1/chat/completions"
+		}
+		return config != nil && config.SupportsPathForModel(requestPath, modelName)
 	case dto.FilterTaskPluginIdentity:
 		if filter.TaskPluginKey == "" {
 			return ch.Type != constant.ChannelTypeTaskPlugin

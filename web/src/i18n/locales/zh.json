@@ -5597,6 +5597,7 @@
     "Returned keys": "返回密钥数",
     "Returned token IDs": "返回的令牌 ID",
     "Returned: {{processed}}": "返回 {{processed}} 个",
+    "Reuse prompt": "复用提示词",
     "Reveal API key": "显示 API 密钥",
     "Reveal full keys": "查看完整密钥",
     "Reveal key": "显示密钥",

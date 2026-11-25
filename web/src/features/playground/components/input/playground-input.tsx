@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useState, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -42,11 +42,12 @@ import type {
   PlaygroundConfig,
   PlaygroundMode,
 } from '../../types'
-import { PlaygroundImageSettings } from './playground-image-settings'
+import { PlaygroundImageSettingsPopover } from './playground-image-settings'
 import { PlaygroundInputControls } from './playground-input-controls'
 import { PlaygroundInputTools } from './playground-input-tools'
 
 interface PlaygroundInputProps {
+  promptRef?: Ref<HTMLTextAreaElement>
   value?: string
   onValueChange?: (value: string) => void
   config: PlaygroundConfig
@@ -78,6 +79,7 @@ interface PlaygroundInputProps {
 }
 
 export function PlaygroundInput({
+  promptRef,
   value,
   onValueChange,
   config,
@@ -104,16 +106,18 @@ export function PlaygroundInput({
   const { t } = useTranslation()
   const [internalText, setInternalText] = useState('')
   const text = value ?? internalText
+  const canUseModel =
+    !isModelLoading && models.some((model) => model.value === modelValue)
   const setText = (nextText: string) => {
     setInternalText(nextText)
     onValueChange?.(nextText)
   }
 
   const handleSubmit = (message: PromptInputMessage) => {
-    if (isModelLoading || !models.some((model) => model.value === modelValue)) {
-      return
-    }
-    const submittableText = getSubmittableInputText(message, disabled)
+    const submittableText = getSubmittableInputText(
+      message,
+      disabled || !canUseModel
+    )
 
     if (!submittableText) return
     onSubmit(submittableText)
@@ -121,25 +125,20 @@ export function PlaygroundInput({
   }
 
   return (
-    <div className='grid shrink-0 gap-4 px-1 md:pb-4'>
+    <div className='shrink-0 pb-2 md:pb-4'>
       <PromptInput
         className='relative'
-        groupClassName='bg-background/95 dark:bg-background/80 border-border/70 shadow-[0_18px_60px_-32px_rgba(0,0,0,0.65)] ring-1 ring-foreground/5 rounded-xl overflow-hidden transition-all duration-200 focus-within:border-primary/45 focus-within:ring-primary/15 focus-within:shadow-[0_22px_70px_-34px_rgba(0,0,0,0.75)]'
+        groupClassName='bg-card border-border dark:bg-card has-disabled:bg-card dark:has-disabled:bg-card rounded-2xl shadow-sm has-disabled:opacity-100 has-[[data-slot=input-group-control]:focus-visible]:border-ring/60 has-[[data-slot=input-group-control]:focus-visible]:ring-0'
         onSubmit={handleSubmit}
       >
-        {mode === 'image' && (
-          <PlaygroundImageSettings
-            config={config}
-            disabled={disabled}
-            onConfigChange={onConfigChange}
-          />
-        )}
         <PromptInputTextarea
+          ref={promptRef}
+          rows={1}
           autoComplete='off'
           autoCorrect='off'
           autoCapitalize='off'
           spellCheck={false}
-          className='min-h-20 px-5 pt-4 pb-3 leading-7 md:min-h-24 md:text-base'
+          className='max-h-32 min-h-10 px-3 pt-2.5 pb-1 leading-6 break-normal [overflow-wrap:anywhere] sm:px-4'
           disabled={disabled}
           onChange={(event) => setText(event.target.value)}
           placeholder={
@@ -150,13 +149,15 @@ export function PlaygroundInput({
           value={text}
         />
 
-        <PromptInputFooter className='border-border/60 bg-muted/20 dark:bg-muted/10 border-t px-3 py-2.5 backdrop-blur'>
+        <PromptInputFooter className='px-2 py-1.5'>
           <PlaygroundInputControls
+            canUseModel={canUseModel}
             disabled={disabled}
             groups={groups}
             groupValue={groupValue}
             isGenerating={isGenerating}
             isModelLoading={isModelLoading}
+            mode={mode}
             models={models}
             modelValue={modelValue}
             onGroupChange={onGroupChange}
@@ -164,7 +165,7 @@ export function PlaygroundInput({
             onStop={onStop}
             text={text}
             tools={
-              <div className='flex items-center gap-2'>
+              <div className='flex min-w-0 flex-wrap items-center gap-1'>
                 {canSwitchMode && (
                   <Select
                     items={[
@@ -179,7 +180,11 @@ export function PlaygroundInput({
                       }
                     }}
                   >
-                    <SelectTrigger aria-label={t('Playground mode')}>
+                    <SelectTrigger
+                      aria-label={t('Playground mode')}
+                      size='sm'
+                      className='border-transparent px-2 shadow-none'
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -191,6 +196,13 @@ export function PlaygroundInput({
                       </SelectGroup>
                     </SelectContent>
                   </Select>
+                )}
+                {mode === 'image' && (
+                  <PlaygroundImageSettingsPopover
+                    config={config}
+                    disabled={disabled}
+                    onConfigChange={onConfigChange}
+                  />
                 )}
                 <PlaygroundInputTools
                   config={config}

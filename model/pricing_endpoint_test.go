@@ -276,6 +276,26 @@ func TestPricingNativeChannelEndpointTypesUnchanged(t *testing.T) {
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeAnthropic, constant.EndpointTypeOpenAI}, byModel["claude-3-5-sonnet"])
 }
 
+func TestPlaygroundImageModelEndpointsDoNotInheritCompatibleChat(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+	insertPricingEndpointChannel(t, 211, constant.ChannelTypeNewAPI, dto.ChannelOtherSettings{})
+	insertPricingEndpointChannel(t, 212, constant.ChannelTypeSub2API, dto.ChannelOtherSettings{})
+	insertPricingEndpointAbility(t, 211, "gpt-image-2")
+	insertPricingEndpointAbility(t, 212, "gpt-image-1.5")
+	require.NoError(t, DB.Create(&Model{
+		ModelName: "gpt-image-2",
+		Endpoints: `{"openai":"/v1/chat/completions"}`,
+		Status:    1,
+		NameRule:  NameRuleExact,
+	}).Error)
+
+	GetPricing()
+	for _, name := range []string{"gpt-image-2", "gpt-image-1.5"} {
+		assert.Equal(t, []constant.EndpointType{constant.EndpointTypeImageGeneration},
+			GetModelSupportEndpointTypesForGroups(name, []string{"default"}))
+	}
+}
+
 func TestInitChannelCacheInvalidatesPricingCache(t *testing.T) {
 	resetPricingEndpointTestTables(t)
 

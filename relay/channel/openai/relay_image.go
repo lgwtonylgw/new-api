@@ -41,7 +41,11 @@ func OpenaiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
 
-	info.UpdateImageCount(openaiImageResponseCount(responseBody))
+	imageCount := openaiImageResponseCount(responseBody)
+	if info.IsPlayground && imageCount == 0 {
+		return nil, playgroundImageDeliveryError()
+	}
+	info.UpdateImageCount(imageCount)
 
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
@@ -142,6 +146,7 @@ func OpenaiImageStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp 
 	usage := &dto.Usage{}
 	var lastStreamData []byte
 	var completedImages int64
+	var deliveredImage bool
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		raw := common.StringToByteSlice(data)
@@ -155,19 +160,34 @@ func OpenaiImageStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp 
 			Type  string    `json:"type"`
 			Usage dto.Usage `json:"usage"`
 		}
+		var completed int64
 		if err := common.Unmarshal(raw, &chunk); err == nil {
 			normalizeOpenAIUsage(&chunk.Usage)
 			if service.ValidUsage(&chunk.Usage) {
 				usage = &chunk.Usage
 			}
 			if chunk.Type == "image_generation.completed" || chunk.Type == "image_edit.completed" {
-				completedImages++
+				payload := gjson.ParseBytes(raw)
+				if openaiImageDataHasField(payload, "url") || openaiImageDataHasField(payload, "b64_json") {
+					completed = 1
+				} else {
+					completed = openaiImageResponseCount(raw)
+				}
 			}
 		}
+		completedImages += completed
 		if err := writeOpenaiImageStreamChunk(c, raw); err != nil {
 			sr.Stop(err)
+			return
 		}
+		deliveredImage = deliveredImage || completed > 0
 	})
+
+	if info.IsPlayground && !deliveredImage {
+		apiErr := playgroundImageDeliveryError()
+		info.StreamStatus.MarkFailed(string(apiErr.GetErrorCode()), string(apiErr.GetErrorType()), apiErr.StatusCode)
+		return nil, apiErr
+	}
 
 	// StreamScannerHandler consumes the upstream [DONE]; re-emit it so the
 	// client still receives a terminal data: [DONE].
@@ -275,25 +295,38 @@ func openaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 	if oaiError := usageResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
+	imageCount := openaiImageResponseCount(responseBody)
+	if info.IsPlayground && imageCount == 0 {
+		return nil, playgroundImageDeliveryError()
+	}
+	info.UpdateImageCount(imageCount)
 	normalizeOpenAIUsage(&usageResp.Usage)
 	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
 
-	info.UpdateImageCount(openaiImageResponseCount(responseBody))
-
 	info.SetFirstResponseTime()
 	emitted, writeErr := WriteImageJSONStream(c, responseBody, &usageResp.Usage)
-	if writeErr != nil {
-		if info.StreamStatus != nil {
-			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, writeErr)
-		}
-		return &usageResp.Usage, nil
-	}
-	info.ReceivedResponseCount += emitted
 	if info.StreamStatus == nil {
 		info.StreamStatus = relaycommon.NewStreamStatus()
 	}
+	info.ReceivedResponseCount += emitted
+	if writeErr != nil {
+		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, writeErr)
+		if info.IsPlayground && emitted == 0 {
+			apiErr := playgroundImageDeliveryError()
+			info.StreamStatus.MarkFailed(string(apiErr.GetErrorCode()), string(apiErr.GetErrorType()), apiErr.StatusCode)
+			return nil, apiErr
+		}
+		return &usageResp.Usage, nil
+	}
 	info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
 	return &usageResp.Usage, nil
+}
+
+func playgroundImageDeliveryError() *types.NewAPIError {
+	return types.NewErrorWithStatusCode(
+		fmt.Errorf("image request ended before a complete image was delivered"),
+		types.ErrorCodeEmptyResponse, http.StatusBadGateway, types.ErrOptionWithSkipRetry(),
+	)
 }
 
 // WriteImageJSONStream frames a completed OpenAI-format JSON image response

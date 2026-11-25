@@ -104,7 +104,7 @@ export function PlaygroundInputTools({
 
   return (
     <>
-      <PromptInputTools className='bg-background/70 border-border/60 rounded-lg border p-1 shadow-xs'>
+      <PromptInputTools className='gap-0.5'>
         {imageMode && (
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -117,7 +117,9 @@ export function PlaygroundInputTools({
               }
             >
               <SparklesIcon size={16} />
-              <span className='text-xs'>{t('Inspiration')}</span>
+              <span className='sr-only text-xs sm:not-sr-only'>
+                {t('Inspiration')}
+              </span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align='start' className='max-w-sm'>
               {IMAGE_PROMPT_EXAMPLES.map((prompt) => (

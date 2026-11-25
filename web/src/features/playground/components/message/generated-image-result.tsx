@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { DownloadIcon, ExpandIcon } from 'lucide-react'
+import { DownloadIcon, ExpandIcon, RotateCcwIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -64,11 +64,12 @@ function GeneratedImage(props: { src: string; index: number }) {
     <div className='bg-background min-w-0 overflow-hidden rounded-lg border'>
       <Button
         variant='ghost'
-        className='h-auto w-full rounded-none p-2'
+        className='bg-muted/35 relative h-auto w-full rounded-none p-0'
         aria-label={t('Preview image {{number}}', { number: props.index + 1 })}
         onClick={() => setPreview(true)}
       >
         <ResponseImage
+          className='my-0 max-h-[min(48svh,28rem)] rounded-none border-0'
           node={{
             src: props.src,
             alt: t('Generated image {{number}}', { number: props.index + 1 }),
@@ -80,32 +81,22 @@ function GeneratedImage(props: { src: string; index: number }) {
             )
           }
         />
+        <span className='bg-background/90 text-foreground pointer-events-none absolute top-2 right-2 grid size-7 place-items-center rounded-md shadow-xs'>
+          <ExpandIcon className='size-3.5' />
+        </span>
       </Button>
       <div className='border-border/60 flex items-center justify-between gap-2 border-t px-2 py-1.5'>
         <span className='text-muted-foreground text-[11px]'>{dimensions}</span>
-        <div className='flex items-center gap-1'>
-          <Button
-            variant='ghost'
-            size='icon'
-            className='size-7'
-            aria-label={t('Preview image {{number}}', {
-              number: props.index + 1,
-            })}
-            onClick={() => setPreview(true)}
-          >
-            <ExpandIcon className='size-3.5' />
-          </Button>
-          <Button
-            variant='ghost'
-            size='sm'
-            className='h-7 text-xs'
-            disabled={downloading}
-            onClick={() => void download()}
-          >
-            <DownloadIcon className='size-3.5' />
-            {t('Download')}
-          </Button>
-        </div>
+        <Button
+          variant='ghost'
+          size='sm'
+          className='h-7 text-xs'
+          disabled={downloading}
+          onClick={() => void download()}
+        >
+          <DownloadIcon className='size-3.5' />
+          {t('Download')}
+        </Button>
       </div>
       {preview && (
         <ImageDialog
@@ -121,10 +112,11 @@ function GeneratedImage(props: { src: string; index: number }) {
 export function GeneratedImageResult(props: {
   images: string[]
   request?: ImageGenerationRequest
+  onReusePrompt?: () => void
 }) {
   const { t } = useTranslation()
   return (
-    <div className='bg-muted/20 my-2 grid w-full max-w-2xl gap-3 rounded-xl border p-3'>
+    <div className='bg-card border-border my-2 grid w-full max-w-2xl gap-2.5 rounded-xl border p-2.5 sm:p-3'>
       <div className='flex flex-wrap items-center justify-between gap-2'>
         <span className='text-sm font-medium'>
           {props.images.length
@@ -146,17 +138,19 @@ export function GeneratedImageResult(props: {
           )}
         </p>
       )}
-      <div
-        className={
-          props.images.length > 1
-            ? 'grid gap-3 sm:grid-cols-2'
-            : 'grid max-w-md gap-3'
-        }
-      >
-        {props.images.map((src, index) => (
-          <GeneratedImage key={src} src={src} index={index} />
-        ))}
-      </div>
+      {props.images.length > 0 && (
+        <div
+          className={
+            props.images.length > 1
+              ? 'grid gap-2.5 sm:grid-cols-2'
+              : 'grid max-w-lg'
+          }
+        >
+          {props.images.map((src, index) => (
+            <GeneratedImage key={src} src={src} index={index} />
+          ))}
+        </div>
+      )}
       {props.request && (
         <div className='flex min-w-0 items-start gap-2'>
           <p className='text-muted-foreground max-h-28 min-w-0 flex-1 overflow-y-auto text-xs leading-5 break-words whitespace-pre-wrap'>
@@ -168,6 +162,18 @@ export function GeneratedImageResult(props: {
             className='size-7'
           />
         </div>
+      )}
+      {props.onReusePrompt && (
+        <Button
+          type='button'
+          size='sm'
+          variant='outline'
+          className='justify-self-start'
+          onClick={props.onReusePrompt}
+        >
+          <RotateCcwIcon />
+          {t('Reuse prompt')}
+        </Button>
       )}
       {props.images.some((src) => src.startsWith('data:')) && (
         <p className='text-muted-foreground text-[11px] leading-5'>

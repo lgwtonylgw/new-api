@@ -60,6 +60,7 @@ type PlaygroundMessageContentProps = {
   errorActions?: ReactNode
   isSourceVisible?: boolean
   message: Message
+  onReuseImagePrompt?: () => void
   versionContent: string
 }
 
@@ -69,6 +70,7 @@ export function PlaygroundMessageContent({
   errorActions,
   isSourceVisible = false,
   message,
+  onReuseImagePrompt,
   versionContent,
 }: PlaygroundMessageContentProps) {
   const { t } = useTranslation()
@@ -146,6 +148,7 @@ export function PlaygroundMessageContent({
         <GeneratedImageResult
           images={message.images ?? []}
           request={message.imageGeneration}
+          onReusePrompt={onReuseImagePrompt}
         />
       )}
 

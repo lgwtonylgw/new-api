@@ -5597,6 +5597,7 @@
     "Returned keys": "Возвращённые ключи",
     "Returned token IDs": "Возвращённые ID токенов",
     "Returned: {{processed}}": "Возвращено: {{processed}}",
+    "Reuse prompt": "Использовать промпт повторно",
     "Reveal API key": "Показать API ключ",
     "Reveal full keys": "Показ полных ключей",
     "Reveal key": "Показать ключ",

@@ -11,6 +11,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestPlaygroundChatSelectsOnlyEligibleImageModelChannels(t *testing.T) {
+	filters := []dto.ChannelFilter{{Kind: dto.FilterRequestPath, RequestPath: "/pg/chat/completions"}}
+	for _, channelType := range []int{constant.ChannelTypeNewAPI, constant.ChannelTypeSub2API} {
+		channel := &Channel{Type: channelType}
+		ok, kind := ChannelSatisfiesFilters(channel, "gpt-image-2", filters)
+		assert.False(t, ok)
+		assert.Equal(t, dto.FilterRequestPath, kind)
+		ok, _ = ChannelSatisfiesFilters(channel, "gpt-5", filters)
+		assert.True(t, ok)
+	}
+
+	channel := &Channel{Type: constant.ChannelTypeAdvancedCustom}
+	channel.SetOtherSettings(kitdto.ChannelOtherSettings{
+		AdvancedCustom: &kitdto.AdvancedCustomConfig{
+			Routes: []kitdto.AdvancedCustomRoute{{
+				IncomingPath: "/v1/chat/completions",
+				Models:       []string{"gpt-image-2"},
+			}},
+		},
+	})
+	ok, _ := ChannelSatisfiesFilters(channel, "gpt-image-2", filters)
+	assert.True(t, ok)
+}
+
 func TestFilterCandidateIDs(t *testing.T) {
 	alphaSetting := `{"task_plugin_key":"alpha"}`
 	betaSetting := `{"task_plugin_key":"beta"}`

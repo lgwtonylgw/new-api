@@ -92,6 +92,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if newAPIError != nil {
 			service.RecordRequestPolicyTermination(c, newAPIError)
 			logger.LogError(c, common.LogText("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
+			if newAPIError.GetErrorCode() == types.ErrorCodeEmptyResponse &&
+				strings.HasPrefix(c.Request.URL.Path, "/pg/") && c.Request.Context().Err() != nil {
+				return
+			}
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
 			if relayFormat != types.RelayFormatOpenAIRealtime && c.Writer.Written() &&
 				strings.HasPrefix(c.Writer.Header().Get("Content-Type"), "text/event-stream") {
@@ -249,7 +253,9 @@ func writeRelayStreamError(c *gin.Context, format types.RelayFormat, apiError *t
 		return
 	}
 	_ = helper.ObjectData(c, gin.H{"error": apiError.ToOpenAIError()})
-	helper.Done(c)
+	if apiError.GetErrorCode() != types.ErrorCodeEmptyResponse || !strings.HasPrefix(c.Request.URL.Path, "/pg/") {
+		helper.Done(c)
+	}
 }
 
 // CountClaudeTokens implements Anthropic's token-counting utility endpoint.

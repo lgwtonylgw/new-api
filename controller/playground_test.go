@@ -16,6 +16,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -166,6 +167,18 @@ func TestPlaygroundImageErrorsPreserveStatusBeforeHeartbeatAndSSEAfterIt(t *test
 			}
 		})
 	}
+}
+
+func TestPlaygroundEmptyImageAfterHeartbeatDoesNotSendDone(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/pg/images/generations", nil)
+	streamPlaygroundImageResponse(c, func(c *gin.Context) {
+		require.NoError(t, helper.PingData(c))
+		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": types.ErrorCodeEmptyResponse}})
+	})
+	assert.Contains(t, recorder.Body.String(), "data: {\"error\":{\"code\":\"empty_response\"}}")
+	assert.NotContains(t, recorder.Body.String(), "[DONE]")
 }
 
 func TestPlaygroundImageExistingSSEPassesThrough(t *testing.T) {

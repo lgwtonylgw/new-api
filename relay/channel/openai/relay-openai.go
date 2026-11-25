@@ -144,6 +144,15 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	})
 
 	info.StreamStatus.RequireTerminal()
+	// Return before estimating usage or finalizing a reply with no data frames.
+	if info.IsPlayground && lastStreamData == "" {
+		apiErr := types.NewErrorWithStatusCode(
+			fmt.Errorf("upstream returned an empty chat stream"),
+			types.ErrorCodeEmptyResponse, http.StatusBadGateway, types.ErrOptionWithSkipRetry(),
+		)
+		info.StreamStatus.MarkFailed(string(apiErr.GetErrorCode()), string(apiErr.GetErrorType()), apiErr.StatusCode)
+		return nil, apiErr
+	}
 
 	// 处理最后的响应
 	shouldSendLastResp := true

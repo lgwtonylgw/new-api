@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { PlaygroundChat } from './components/chat/playground-chat'
 import { PlaygroundInput } from './components/input/playground-input'
@@ -30,6 +30,7 @@ import type { PlaygroundMode } from './types'
 
 export function Playground() {
   const [draft, setDraft] = useState('')
+  const promptRef = useRef<HTMLTextAreaElement>(null)
   const {
     config,
     parameterEnabled,
@@ -96,6 +97,12 @@ export function Playground() {
     clearMessages()
   }
 
+  const handleUseImagePrompt = (prompt: string) => {
+    if (isGenerating) return
+    setDraft(prompt)
+    promptRef.current?.focus()
+  }
+
   return (
     <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
       {/* Full-width scroll container: scrolling works even over side whitespace */}
@@ -107,7 +114,9 @@ export function Playground() {
           onRegenerateMessage={handleRegenerateMessage}
           onEditMessage={handleEditMessage}
           onDeleteMessage={handleDeleteMessage}
-          onSelectPrompt={mode === 'image' ? setDraft : handleSendMessage}
+          onSelectPrompt={
+            mode === 'image' ? handleUseImagePrompt : handleSendMessage
+          }
           isGenerating={isGenerating}
           editingKey={editingMessageKey}
           onCancelEdit={handleEditOpenChange}
@@ -117,8 +126,9 @@ export function Playground() {
       </div>
 
       {/* Input area: center content and constrain to the same container width */}
-      <div className='mx-auto w-full max-w-4xl'>
+      <div className='mx-auto w-full max-w-4xl px-3 sm:px-4'>
         <PlaygroundInput
+          promptRef={promptRef}
           value={draft}
           onValueChange={setDraft}
           config={config}

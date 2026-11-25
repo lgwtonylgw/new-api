@@ -20,7 +20,10 @@ import { useState, type ReactEventHandler } from 'react'
 import { useTranslation } from 'react-i18next'
 import { sanitizeImageSrc, type ImageNode } from 'stream-markdown-parser'
 
+import { cn } from '@/lib/utils'
+
 type ResponseImageProps = {
+  className?: string
   node: Pick<ImageNode, 'src' | 'alt' | 'title'>
   onLoad?: ReactEventHandler<HTMLImageElement>
 }
@@ -41,7 +44,10 @@ export function ResponseImage(props: ResponseImageProps) {
   return (
     <img
       alt={props.node.alt}
-      className='border-border/70 my-4 block h-auto max-h-96 max-w-full rounded-lg border object-contain'
+      className={cn(
+        'border-border/70 my-4 block h-auto max-h-96 max-w-full rounded-lg border object-contain',
+        props.className
+      )}
       loading='lazy'
       onError={() => setHasError(true)}
       onLoad={props.onLoad}

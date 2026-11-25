@@ -5597,6 +5597,7 @@
     "Returned keys": "傳回金鑰數",
     "Returned token IDs": "傳回的權杖 ID",
     "Returned: {{processed}}": "傳回 {{processed}} 個",
+    "Reuse prompt": "重用提示詞",
     "Reveal API key": "顯示 API 金鑰",
     "Reveal full keys": "檢視完整金鑰",
     "Reveal key": "顯示金鑰",

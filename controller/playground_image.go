@@ -133,7 +133,9 @@ func streamPlaygroundImageResponse(c *gin.Context, handler gin.HandlerFunc) {
 	c.Header("Content-Type", "text/event-stream")
 	if gjson.GetBytes(writer.body.Bytes(), "error").Exists() {
 		_ = helper.StringData(c, writer.body.String())
-		helper.Done(c)
+		if gjson.GetBytes(writer.body.Bytes(), "error.code").String() != string(types.ErrorCodeEmptyResponse) {
+			helper.Done(c)
+		}
 		return
 	}
 	if _, err := openai.WriteImageJSONStream(c, writer.body.Bytes(), nil); err != nil {

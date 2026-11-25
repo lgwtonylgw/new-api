@@ -355,7 +355,8 @@ func updatePricing() {
 	// Native compatible channels also serve catalog-declared aliases. Explicit
 	// Advanced Custom routes remain authoritative for their own capabilities.
 	for _, ability := range enableAbilities {
-		if ability.ChannelType == constant.ChannelTypeAdvancedCustom || ability.ChannelType == constant.ChannelTypeTaskPlugin {
+		if ability.ChannelType == constant.ChannelTypeAdvancedCustom || ability.ChannelType == constant.ChannelTypeTaskPlugin ||
+			common.IsImageGenerationModel(ability.Model) {
 			continue
 		}
 		endpoints := groupModelSupportEndpointTypes[ability.Group][ability.Model]

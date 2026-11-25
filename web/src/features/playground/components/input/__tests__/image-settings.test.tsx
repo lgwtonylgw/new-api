@@ -21,7 +21,10 @@ import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 
 import { DEFAULT_CONFIG, DEFAULT_PARAMETER_ENABLED } from '../../../constants'
-import { IMAGE_PROMPT_EXAMPLES } from '../../../lib/image/image-generation'
+import {
+  DEFAULT_IMAGE_SETTINGS,
+  IMAGE_PROMPT_EXAMPLES,
+} from '../../../lib/image/image-generation'
 import { PlaygroundImageSettings } from '../playground-image-settings'
 import { PlaygroundInput } from '../playground-input'
 
@@ -109,6 +112,54 @@ test('choosing inspiration fills a draft and waits for the user to send', async 
   )
   expect(screen.getByRole('textbox')).toHaveValue(IMAGE_PROMPT_EXAMPLES[0])
   expect(submit).not.toHaveBeenCalled()
-  await user.click(screen.getAllByRole('button', { name: /^Send/ })[0])
+  await user.click(screen.getByRole('button', { name: 'Generate image' }))
   expect(submit).toHaveBeenCalledWith(IMAGE_PROMPT_EXAMPLES[0])
+})
+
+test('image options open on demand and reset without sending or clearing the draft', async () => {
+  const submit = vi.fn()
+  const update = vi.fn()
+  const user = userEvent.setup()
+  render(
+    <PlaygroundInput
+      config={{
+        ...DEFAULT_CONFIG,
+        model: 'gpt-image-2',
+        image: { ratio: '16:9', resolution: '4K', count: 2 },
+      }}
+      mode='image'
+      value='A draft'
+      models={[{ value: 'gpt-image-2', label: 'gpt-image-2' }]}
+      modelValue='gpt-image-2'
+      onModelChange={vi.fn()}
+      groups={[{ value: 'default', label: 'Default', ratio: 1 }]}
+      groupValue='default'
+      onGroupChange={vi.fn()}
+      onConfigChange={update}
+      onParameterEnabledChange={vi.fn()}
+      parameterEnabled={DEFAULT_PARAMETER_ENABLED}
+      onSubmit={submit}
+    />
+  )
+
+  expect(screen.queryByRole('combobox', { name: 'Aspect ratio' })).toBeNull()
+  const trigger = screen.getByRole('button', {
+    name: 'Image generation settings',
+  })
+  expect(trigger).toHaveTextContent('16:9')
+  await user.click(trigger)
+  const ratio = screen.getByRole('combobox', { name: 'Aspect ratio' })
+  expect(ratio).toBeVisible()
+  await user.click(ratio)
+  await user.click(await screen.findByRole('option', { name: '1:1' }))
+  expect(update).toHaveBeenCalledWith(
+    'image',
+    expect.objectContaining({ ratio: '1:1' })
+  )
+  await user.click(screen.getByRole('button', { name: 'Reset to default' }))
+  expect(update).toHaveBeenCalledWith('image', DEFAULT_IMAGE_SETTINGS)
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('combobox', { name: 'Aspect ratio' })).toBeNull()
+  expect(screen.getByRole('textbox')).toHaveValue('A draft')
+  expect(submit).not.toHaveBeenCalled()
 })
