@@ -127,12 +127,13 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
       <SidebarMenuButton
         isActive={checkIsActive(href, item)}
         tooltip={item.title}
+        onClick={() => setOpenMobile(false)}
         render={
-          <Link
-            to={item.url}
-            preload={isMobile ? false : undefined}
-            onClick={() => setOpenMobile(false)}
-          />
+          item.external ? (
+            <a href={item.url} target='_blank' rel='noopener noreferrer' />
+          ) : (
+            <Link to={item.url} preload={isMobile ? false : undefined} />
+          )
         }
       >
         {item.icon && <item.icon className='shrink-0' />}

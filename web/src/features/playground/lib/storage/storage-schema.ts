@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
+import { REASONING_EFFORT_LEVELS } from '../../constants'
+
 export const STORAGE_VERSION = 1
 export const MAX_STORED_MESSAGES = 100
 export const MAX_STORED_MESSAGES_BYTES = 1024 * 1024
@@ -33,6 +35,7 @@ export const playgroundConfigSchema = z.object({
   frequency_penalty: z.number().optional(),
   presence_penalty: z.number().optional(),
   seed: z.number().nullable().optional(),
+  reasoning_effort: z.enum(REASONING_EFFORT_LEVELS).optional().catch(undefined),
   stream: z.boolean().optional(),
   image: z
     .object({

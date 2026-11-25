@@ -88,6 +88,7 @@ export interface ApiResponse<T = unknown> {
 export interface SystemStatus {
   api_public_address?: string
   server_address?: string
+  infinite_canvas_url?: string
   success?: boolean
   message?: string
   data?: {

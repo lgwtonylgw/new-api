@@ -111,6 +111,9 @@ export function usePlaygroundState() {
     <K extends keyof PlaygroundConfig>(key: K, value: PlaygroundConfig[K]) => {
       setConfig((prev) => {
         const updated = { ...prev, [key]: value }
+        if ((key === 'model' || key === 'group') && value !== prev[key]) {
+          delete updated.reasoning_effort
+        }
         saveConfig(updated)
         return updated
       })

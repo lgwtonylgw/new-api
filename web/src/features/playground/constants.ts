@@ -18,6 +18,16 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { PlaygroundConfig, ParameterEnabled } from './types'
 
+export const REASONING_EFFORT_LEVELS = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const
+
 // Message constants
 export const MESSAGE_ROLES = {
   USER: 'user',

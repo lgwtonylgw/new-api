@@ -16,6 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { REASONING_EFFORT_LEVELS } from './constants'
+
+export type ReasoningEffort = (typeof REASONING_EFFORT_LEVELS)[number]
+
 // Message types
 export type MessageRole = 'user' | 'assistant' | 'system'
 
@@ -78,6 +82,7 @@ export interface ChatCompletionRequest {
   frequency_penalty?: number
   presence_penalty?: number
   seed?: number
+  reasoning_effort?: ReasoningEffort
 }
 
 export interface ImageGenerationRequest {
@@ -156,6 +161,7 @@ export interface PlaygroundConfig {
   frequency_penalty: number
   presence_penalty: number
   seed: number | null
+  reasoning_effort?: ReasoningEffort
   stream: boolean
   image?: Partial<ImageSettings>
 }

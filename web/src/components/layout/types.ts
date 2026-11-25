@@ -40,6 +40,7 @@ type BaseNavItem = {
  * Navigation link type - single link item
  */
 export type NavLink = BaseNavItem & {
+  external?: boolean
   url: LinkProps['to'] | (string & {})
   items?: never
   type?: never

@@ -32,9 +32,11 @@ import {
   waitFor,
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { NavGroup } from '@/components/layout/components/nav-group'
 import { checkIsActive } from '@/components/layout/lib/url-utils'
+import { SidebarProvider } from '@/components/ui/sidebar'
 import { invalidateModelPricing } from '@/features/model-pricing/api'
 import {
   parseSidebarModulesAdmin,
@@ -66,12 +68,18 @@ afterEach(() => {
   useAuthStore.getState().auth.reset()
 })
 
-function sidebarFor(admin?: object, user?: object, canConfigure = true) {
+function sidebarFor(
+  admin?: object,
+  user?: object,
+  canConfigure = true,
+  canvasUrl?: string
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   client.setQueryData(['status'], {
     SidebarModulesAdmin: admin ? JSON.stringify(admin) : '',
+    infinite_canvas_url: canvasUrl,
   })
   useAuthStore.getState().auth.setUser({
     id: 1,
@@ -93,6 +101,51 @@ function sidebarFor(admin?: object, user?: object, canConfigure = true) {
   )
   return result
 }
+
+describe('Infinite Canvas sidebar entry', () => {
+  const canvasUrl = 'https://studio.tokenaigate.com/#canvas'
+
+  it('opens the canvas in a new tab and appears after Playground', async () => {
+    const { result } = sidebarFor(undefined, undefined, true, canvasUrl)
+    const chat = result.current.find((group) => group.id === 'chat')
+    assert.isDefined(chat)
+    expect(chat.items.map((item) => item.title)).toEqual([
+      'Playground',
+      'Infinite Canvas',
+      'Chat',
+    ])
+    const router = createRouter({
+      routeTree: createRootRoute({
+        component: () => (
+          <SidebarProvider>
+            <NavGroup {...chat} items={chat.items.slice(0, 2)} />
+          </SidebarProvider>
+        ),
+      }),
+      history: createMemoryHistory({ initialEntries: ['/'] }),
+    })
+    await router.load()
+    render(<RouterProvider router={router} />)
+    const link = screen.getByRole('link', { name: 'Infinite Canvas' })
+    expect(link.getAttribute('href')).toBe(canvasUrl)
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+  })
+
+  it.each([
+    [{ chat: { enabled: true, infiniteCanvas: false } }, undefined, canvasUrl],
+    [undefined, { chat: { infiniteCanvas: false } }, canvasUrl],
+    [undefined, undefined, 'javascript:alert(1)'],
+  ])(
+    'hides a disabled canvas entry or an invalid destination',
+    (admin, user, url) => {
+      const { result } = sidebarFor(admin, user, true, url)
+      expect(
+        result.current.flatMap((group) => group.items).map((item) => item.title)
+      ).not.toContain('Infinite Canvas')
+    }
+  )
+})
 
 describe('security sidebar visibility', () => {
   it('old configurations show Security & Access immediately after Profile and keep API Keys', () => {

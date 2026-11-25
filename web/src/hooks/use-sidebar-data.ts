@@ -23,6 +23,7 @@ import {
   CreditCard,
   FileText,
   FlaskConical,
+  Infinity as InfinityIcon,
   Key,
   LayoutDashboard,
   ListTodo,
@@ -40,7 +41,10 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import type { SidebarBadges, SidebarData } from '@/components/layout/types'
+import { isHttpUrl } from '@/lib/content-format'
 import { ROLE } from '@/lib/roles'
+
+import { useStatus } from './use-status'
 
 /**
  * Root navigation groups for the application sidebar.
@@ -50,6 +54,20 @@ import { ROLE } from '@/lib/roles'
  */
 export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
   const { t } = useTranslation()
+  const { status } = useStatus()
+  const canvasUrl = status?.infinite_canvas_url
+  const canvasLink =
+    typeof canvasUrl === 'string' && isHttpUrl(canvasUrl)
+      ? [
+          {
+            title: t('Infinite Canvas'),
+            url: canvasUrl,
+            icon: InfinityIcon,
+            external: true,
+            configUrls: ['/infinite-canvas'],
+          },
+        ]
+      : []
 
   return {
     navGroups: [
@@ -62,6 +80,7 @@ export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
             url: '/playground',
             icon: FlaskConical,
           },
+          ...canvasLink,
           {
             title: t('Chat'),
             icon: MessageSquare,

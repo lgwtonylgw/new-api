@@ -28,6 +28,14 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -44,6 +52,7 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
+import { REASONING_EFFORT_LEVELS } from '../../constants'
 import {
   getParameterControlValueText,
   normalizeParameterNumberValue,
@@ -80,6 +89,22 @@ function PlaygroundParameterContent({
   parameterEnabled,
 }: PlaygroundParameterContentProps) {
   const { t } = useTranslation()
+  const effortLabels = {
+    none: t('Disable'),
+    minimal: t('Minimal'),
+    low: t('Low'),
+    medium: t('Medium'),
+    high: t('High'),
+    xhigh: t('Extra high'),
+    max: t('Maximum'),
+  }
+  const effortOptions = [
+    { value: 'default' as const, label: t('Default') },
+    ...REASONING_EFFORT_LEVELS.map((value) => ({
+      value,
+      label: effortLabels[value],
+    })),
+  ]
 
   const updateParameterConfig = (
     key: PlaygroundParameterKey,
@@ -101,6 +126,41 @@ function PlaygroundParameterContent({
         compact ? 'px-4 pb-4' : 'p-1'
       )}
     >
+      <div className='border-border/70 bg-background/60 grid gap-2 rounded-lg border p-3'>
+        <label
+          className='text-sm font-medium'
+          htmlFor='playground-reasoning-effort'
+        >
+          {t('Reasoning Effort')}
+        </label>
+        <Select
+          items={effortOptions}
+          value={config.reasoning_effort ?? 'default'}
+          disabled={disabled || !config.model}
+          onValueChange={(value) =>
+            onConfigChange(
+              'reasoning_effort',
+              REASONING_EFFORT_LEVELS.find((level) => level === value)
+            )
+          }
+        >
+          <SelectTrigger id='playground-reasoning-effort' className='w-full'>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {effortOptions.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        <p className='text-muted-foreground text-xs leading-4'>
+          {t('Supported levels depend on the model.')}
+        </p>
+      </div>
       {PLAYGROUND_PARAMETER_CONTROLS.map((control) => {
         const enabled = parameterEnabled[control.key]
         const value = config[control.key]
@@ -198,9 +258,10 @@ function PlaygroundParameterContent({
 export function PlaygroundParameterPanel(props: PlaygroundParameterPanelProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
-  const activeCount = PLAYGROUND_PARAMETER_CONTROLS.filter(
-    (control) => props.parameterEnabled[control.key]
-  ).length
+  const activeCount =
+    PLAYGROUND_PARAMETER_CONTROLS.filter(
+      (control) => props.parameterEnabled[control.key]
+    ).length + Number(Boolean(props.config.reasoning_effort))
 
   const trigger = (
     <PromptInputButton
