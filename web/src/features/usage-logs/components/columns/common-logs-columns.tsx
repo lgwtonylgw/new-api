@@ -61,7 +61,7 @@ import {
   getTieredBillingSummary,
   hasAnyCacheTokens,
   getCacheWriteTokens,
-  getBilledImageUsage,
+  getImageLogUsage,
   parseLogOther,
   isViolationFeeLog,
   logTokenName,
@@ -75,9 +75,9 @@ import {
   isPerCallBilling,
 } from '../../lib/utils'
 import type { LogOtherData } from '../../types'
-import { BilledImageUsage } from '../billed-image-usage'
 import { CacheHitRate } from '../cache-hit-rate'
 import { DetailsDialog } from '../dialogs/details-dialog'
+import { ImageLogUsage } from '../image-log-usage'
 import { LogCostDisplay } from '../log-cost-display'
 import { ModelBadge } from '../model-badge'
 import { TimingMetricsCell, StreamTpsCell } from '../timing-metrics-cell'
@@ -736,8 +736,8 @@ export function useCommonLogsColumns(
           if (!isDisplayableLogType(log.type)) return null
 
           const other = parseLogOther(log.other)
-          const imageUsage = log.type === 2 ? getBilledImageUsage(other) : null
-          if (imageUsage) return <BilledImageUsage {...imageUsage} />
+          const imageUsage = log.type === 2 ? getImageLogUsage(other) : null
+          if (imageUsage) return <ImageLogUsage {...imageUsage} />
 
           const promptTokens = log.prompt_tokens || 0
           const completionTokens = log.completion_tokens || 0

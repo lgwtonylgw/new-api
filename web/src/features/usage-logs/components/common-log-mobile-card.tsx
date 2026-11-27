@@ -34,8 +34,8 @@ import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 import type { UsageLog } from '../data/schema'
 import {
   formatModelName,
-  getBilledImageUsage,
   getCacheWriteTokens,
+  getImageLogUsage,
   logTokenName,
   parseLogOther,
 } from '../lib/format'
@@ -44,8 +44,8 @@ import {
   isDisplayableLogType,
   isTimingLogType,
 } from '../lib/utils'
-import { BilledImageUsage } from './billed-image-usage'
 import { CacheHitRate } from './cache-hit-rate'
+import { ImageLogUsage } from './image-log-usage'
 import { ModelBadge, ResponseModelDetails } from './model-badge'
 import { StreamTpsCell, TimingMetricsCell } from './timing-metrics-cell'
 import { useUsageLogsContext } from './usage-logs-provider'
@@ -139,7 +139,7 @@ export function CommonLogMobileCard<TData>(props: {
   const cacheWrite = getCacheWriteTokens(other)
   const showUsage = displayable && props.cells.has('prompt_tokens')
   const imageUsage =
-    showUsage && log.type === 2 ? getBilledImageUsage(other) : null
+    showUsage && log.type === 2 ? getImageLogUsage(other) : null
   const showTokens =
     showUsage &&
     !imageUsage &&
@@ -295,7 +295,7 @@ export function CommonLogMobileCard<TData>(props: {
             )}
         </div>
       )}
-      {imageUsage && <BilledImageUsage {...imageUsage} />}
+      {imageUsage && <ImageLogUsage {...imageUsage} />}
       {showTokens && (
         <div className='text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 text-xs [overflow-wrap:anywhere]'>
           <span>

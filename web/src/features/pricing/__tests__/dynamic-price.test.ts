@@ -58,6 +58,46 @@ const summaryOptions = {
 }
 
 describe('expression price summaries', () => {
+  test.each([
+    'param("size") != "2880x2880"',
+    '!(param("size") == "2880x2880")',
+    'param("size") == "2880x2880" && hour("Asia/Shanghai") >= 9',
+  ])('expands the image prices for visual conditions: %s', (condition) => {
+    const expression = `${condition} ? tier("selected", fixed(0.12)) * image_count : tier("fallback", fixed(0.08)) * image_count`
+    expect(parseTiersFromExpr(expression)).toEqual([
+      {
+        label: 'selected',
+        imageCount: true,
+        billingUnit: 'request',
+        fixedPrice: 0.12,
+        conditions: [],
+        conditionText: `(${condition})`,
+      },
+      {
+        label: 'fallback',
+        imageCount: true,
+        billingUnit: 'request',
+        fixedPrice: 0.08,
+        conditions: [],
+        conditionText: `!(${condition})`,
+      },
+    ])
+  })
+
+  test('keeps both the size and the time condition for nested image tiers', () => {
+    const expression =
+      '(param("size") == "2880x2880" ? (hour("UTC") >= 9 ? tier("peak", fixed(0.18)) : tier("off_peak", fixed(0.12))) : tier("fallback", fixed(0.08))) * image_count'
+    const tiers = parseTiersFromExpr(expression)
+    expect(tiers.map((tier) => [tier.label, tier.imageCount])).toEqual([
+      ['peak', true],
+      ['off_peak', true],
+      ['fallback', true],
+    ])
+    expect(tiers[1].conditionText).toBe(
+      '(param("size") == "2880x2880") && !(hour("UTC") >= 9)'
+    )
+  })
+
   test('uses the independent group ratio for each image tier', () => {
     const model = pricingModel({
       billing_mode: 'tiered_expr',

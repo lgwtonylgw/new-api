@@ -215,21 +215,20 @@ func PrepareTieredBillingForSelectedGroup(c *gin.Context, relayInfo *relaycommon
 	if snap == nil {
 		return nil
 	}
-	if snap.EstimatedGroupRatio() == 0 {
-		// Paid-to-free keeps FreeModel as-is: FreeModel means "pre-consume was
-		// skipped", which is not true once a session exists, and settlement
-		// already yields 0 for a zero group ratio.
+	reservation := snap.ReservationQuota()
+	if snap.EstimatedGroupRatio() == 0 && reservation == 0 {
+		// Keep an existing session available to refund a previous reservation.
 		return nil
 	}
 
-	// The selected group is paid; clear a FreeModel flag frozen when the
-	// initial group was free so downstream state stays consistent.
+	// The selected group requires a billing session, even if the initial
+	// group was free and skipped reservation.
 	relayInfo.PriceData.FreeModel = false
 
 	if relayInfo.Billing == nil {
-		return PreConsumeBilling(c, snap.EstimatedQuotaAfterGroup, relayInfo)
+		return PreConsumeBilling(c, reservation, relayInfo)
 	}
-	if err := relayInfo.Billing.Reserve(snap.EstimatedQuotaAfterGroup); err != nil {
+	if err := relayInfo.Billing.Reserve(reservation); err != nil {
 		return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 	}
 	relayInfo.FinalPreConsumedQuota = relayInfo.Billing.GetPreConsumedQuota()
@@ -258,6 +257,9 @@ func TryTieredSettle(relayInfo *relaycommon.RelayInfo, params billingexpr.TokenP
 
 	tr, err := billingexpr.ComputeTieredQuotaWithRequest(snap, params, requestInput)
 	if err != nil {
+		if snap.ReservationQuota() > snap.EstimatedQuotaAfterGroup {
+			return true, snap.EstimatedQuotaAfterGroup, nil
+		}
 		quota = relayInfo.FinalPreConsumedQuota
 		if quota <= 0 {
 			quota = snap.EstimatedQuotaAfterGroup

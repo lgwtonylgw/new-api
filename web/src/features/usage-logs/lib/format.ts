@@ -181,16 +181,18 @@ export function parseLogOther(other: string): LogOtherData | null {
   }
 }
 
-export function getBilledImageUsage(other: LogOtherData | null) {
+export function getImageLogUsage(other: LogOtherData | null) {
   if (!other || other.billing_unit === 'token') return null
 
   let count = other.image_count
-  // Older fixed-price image logs stored the quantity in structured content.
-  if (
-    count == null &&
+  const legacyFixedPrice =
     other.billing_mode !== 'tiered_expr' &&
     typeof other.model_price === 'number' &&
-    other.model_price >= 0 &&
+    other.model_price >= 0
+  // Fixed-price image logs can carry the count in structured content alone.
+  if (
+    count == null &&
+    (other.billing_unit === 'request' || legacyFixedPrice) &&
     Array.isArray(other.content_parts)
   ) {
     const part = other.content_parts.find(
@@ -205,7 +207,8 @@ export function getBilledImageUsage(other: LogOtherData | null) {
 
   return {
     count,
-    tier: typeof other.matched_tier === 'string' ? other.matched_tier.trim() : '',
+    tier:
+      typeof other.matched_tier === 'string' ? other.matched_tier.trim() : '',
   }
 }
 

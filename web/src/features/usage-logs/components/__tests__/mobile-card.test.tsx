@@ -405,6 +405,31 @@ it.each([false, true])(
 )
 
 it.each([false, true])(
+  'shows fixed-tier image logs with count recorded in the log details (desktop: %s)',
+  (desktopTokens) => {
+    renderLogs({
+      desktopTokens,
+      logs: [
+        {
+          ...log,
+          other: JSON.stringify({
+            billing_mode: 'tiered_expr',
+            billing_unit: 'request',
+            matched_tier: '4K',
+            content_parts: [
+              { key: 'Image count {{count}}', params: { count: 2 } },
+            ],
+          }),
+        },
+      ],
+    })
+
+    expect(screen.getByText('2 images')).toBeVisible()
+    expect(screen.getByText('(4K)')).toBeVisible()
+  }
+)
+
+it.each([false, true])(
   'shows the quantity for older fixed-price image logs without a tier (desktop: %s)',
   (desktopTokens) => {
     renderLogs({

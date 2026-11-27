@@ -116,6 +116,7 @@ type cachedEntry struct {
 	requestRules  []RequestRuleTrace
 	version       int
 	fixedPricing  bool
+	mixedPricing  bool
 }
 
 var (
@@ -225,6 +226,7 @@ func compileEntryFromCacheByHash(exprStr, hash string) (*cachedEntry, error) {
 		requestRules:  patcher.requestRules,
 		version:       version,
 		fixedPricing:  fixedPricing,
+		mixedPricing:  fixedPricing && hasTokenPricingLeaf(tree.Node) && hasMutablePricingCondition(tree.Node),
 	}
 	cacheMu.Lock()
 	if len(cache) >= maxCacheSize {

@@ -19,6 +19,49 @@ func UsesFixedPricingByHash(expression, hash string) bool {
 	return err == nil && entry.fixedPricing
 }
 
+// Fixed-price expressions are validated to have one tier call at each leaf.
+func hasTokenPricingLeaf(node ast.Node) bool {
+	return ast.Find(node, func(part ast.Node) bool {
+		call, ok := part.(*ast.CallNode)
+		if !ok || len(call.Arguments) != 2 {
+			return false
+		}
+		callee, ok := call.Callee.(*ast.IdentifierNode)
+		if !ok || callee.Value != "tier" {
+			return false
+		}
+		if price, ok := call.Arguments[1].(*ast.CallNode); ok {
+			if name, ok := price.Callee.(*ast.IdentifierNode); ok && name.Value == "fixed" {
+				return false
+			}
+		}
+		return true
+	}) != nil
+}
+
+// Request fields and headers are frozen. Token quantities, the billed image
+// count and the clock may change between reservation and settlement.
+func hasMutablePricingCondition(node ast.Node) bool {
+	return ast.Find(node, func(part ast.Node) bool {
+		conditional, ok := part.(*ast.ConditionalNode)
+		if !ok || !containsPricingMarker(conditional) {
+			return false
+		}
+		return ast.Find(conditional.Cond, func(probe ast.Node) bool {
+			id, ok := probe.(*ast.IdentifierNode)
+			if !ok {
+				return false
+			}
+			switch id.Value {
+			case "hour", "minute", "weekday", "month", "day":
+				return true
+			}
+			_, quantity := compileEnvPrototypeV1[id.Value].(float64)
+			return quantity
+		}) != nil
+	}) != nil
+}
+
 func containsPricingMarker(node ast.Node) bool {
 	return ast.Find(node, func(part ast.Node) bool {
 		identifier, ok := part.(*ast.IdentifierNode)

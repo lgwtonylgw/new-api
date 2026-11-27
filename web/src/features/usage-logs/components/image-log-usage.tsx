@@ -19,10 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import { ImageIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-export function BilledImageUsage(props: { count: number; tier: string }) {
+export function ImageLogUsage(props: { count: number; tier: string }) {
   const { t } = useTranslation()
   return (
-    <span className='inline-flex min-w-0 max-w-full items-start gap-1.5 text-xs leading-4'>
+    <span className='inline-flex max-w-full min-w-0 items-start gap-1.5 text-xs leading-4'>
       <ImageIcon aria-hidden='true' className='text-primary size-4 shrink-0' />
       <span className='min-w-0 [overflow-wrap:anywhere]'>
         <span className='font-medium tabular-nums'>

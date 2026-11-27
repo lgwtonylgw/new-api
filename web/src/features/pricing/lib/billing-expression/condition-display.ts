@@ -20,7 +20,11 @@ import type { TOptions } from 'i18next'
 
 import { toIntlLocale } from '@/i18n/languages'
 
-import { flattenBinary } from './display'
+import {
+  flattenBinary,
+  hasImageSizeCondition,
+  isImageSizeProbe,
+} from './display'
 import { compileBillingExpression } from './parser'
 import { TIME_FUNCTIONS, type ExpressionNode, type TimeFunction } from './types'
 
@@ -136,14 +140,41 @@ function describeBillingCondition(
   locale: string
 ): Description | null {
   if (node.kind === 'unary' && node.operator === '!') {
+    const operand = node.operand
+    if (
+      operand.kind === 'binary' &&
+      (operand.operator === '==' || operand.operator === '!=') &&
+      isImageSizeProbe(operand.left)
+    ) {
+      return describeBillingCondition(
+        { ...operand, operator: operand.operator === '==' ? '!=' : '==' },
+        t,
+        locale
+      )
+    }
     const description = describeBillingCondition(node.operand, t, locale)
     if (!description) return null
     return {
       ...description,
-      text: t('Outside these times: {{condition}}', {
-        condition: description.text,
-      }),
+      text: hasImageSizeCondition(operand)
+        ? `!(${description.text})`
+        : t('Outside these times: {{condition}}', {
+            condition: description.text,
+          }),
       kind: 'combined',
+    }
+  }
+  if (
+    node.kind === 'binary' &&
+    (node.operator === '==' || node.operator === '!=') &&
+    isImageSizeProbe(node.left) &&
+    node.right.kind === 'literal' &&
+    typeof node.right.value === 'string'
+  ) {
+    return {
+      text: `${t('Image size')} ${node.operator} ${JSON.stringify(node.right.value)}`,
+      kind: 'combined',
+      timezone: '',
     }
   }
   if (

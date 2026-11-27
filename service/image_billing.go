@@ -55,6 +55,7 @@ func PrepareImageBillingForRequest(c *gin.Context, info *relaycommon.RelayInfo, 
 			snap.EstimatedFixedPrice = trace.FixedPrice
 			snap.GroupRatio = group.GroupRatio
 			snap.ImageGroupRatio = group.ImageGroupRatio
+			quota = snap.ReservationQuota()
 		}
 	} else {
 		quantity := 1

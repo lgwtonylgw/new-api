@@ -96,6 +96,20 @@ func (snap *BillingSnapshot) EstimatedGroupRatio() float64 {
 	return ImageAwareGroupRatio(snap.GroupRatio, snap.ImageGroupRatio, snap.EstimatedBillingUnit, snap.EstimatedImageCount)
 }
 
+// ReservationQuota keeps the funding session and quota checks active if a
+// zero estimate can switch to a different, paid billing unit at settlement.
+// The minimum reserve is independent of the final charge.
+func (snap *BillingSnapshot) ReservationQuota() int {
+	if snap.EstimatedQuotaAfterGroup == 0 && snap.EstimatedImageCount != nil &&
+		snap.ImageGroupRatio != nil && *snap.ImageGroupRatio != snap.GroupRatio {
+		entry, err := compileEntryFromCacheByHash(snap.ExprString, snap.ExprHash)
+		if err == nil && entry.mixedPricing {
+			return 1
+		}
+	}
+	return snap.EstimatedQuotaAfterGroup
+}
+
 // TieredResult holds everything needed after running tiered settlement.
 type TieredResult struct {
 	// BillingTokens records the actual normalized inputs for successful token

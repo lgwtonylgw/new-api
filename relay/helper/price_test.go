@@ -1,14 +1,18 @@
 package helper
 
 import (
+	"bytes"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
@@ -733,6 +737,54 @@ func TestInputPreConsumeMultiplierLegacyAndRequestPrices(t *testing.T) {
 				require.Nil(t, service.PrepareImageBillingForRequest(ctx, info, 2))
 				assert.Equal(t, 750, reservation.held, "retry must reuse the original fractional multiplier")
 			}
+		})
+	}
+}
+
+func TestFixedImageSizeTierMatchesJSONAndMultipart(t *testing.T) {
+	previous := config.GlobalConfig.ExportAllConfigs()
+	t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(previous)) })
+	const modelName = "fixed-size-test"
+	const expr = `param("size") == "2880x2880" ? tier("2K", fixed(0.16)) : tier("fallback", fixed(0.08))`
+	exprs, err := common.Marshal(map[string]string{modelName: expr})
+	require.NoError(t, err)
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode":    `{"fixed-size-test":"tiered_expr"}`,
+		"billing_setting.billing_expr":    string(exprs),
+		"group_ratio_setting.group_ratio": `{"default":1}`,
+	}))
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	require.NoError(t, writer.WriteField("model", modelName))
+	require.NoError(t, writer.WriteField("size", "2880x2880"))
+	require.NoError(t, writer.Close())
+	jsonRequest := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"model":"fixed-size-test","size":"2880x2880"}`))
+	jsonRequest.Header.Set("Content-Type", "application/json")
+	editRequest := httptest.NewRequest(http.MethodPost, "/v1/images/edits", &body)
+	editRequest.Header.Set("Content-Type", writer.FormDataContentType())
+
+	for _, tc := range []struct {
+		request *http.Request
+		mode    int
+	}{
+		{jsonRequest, relayconstant.RelayModeImagesGenerations},
+		{editRequest, relayconstant.RelayModeImagesEdits},
+	} {
+		t.Run(tc.request.URL.Path, func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = tc.request
+			request, err := GetAndValidOpenAIImageRequest(ctx, tc.mode)
+			require.NoError(t, err)
+			info := &relaycommon.RelayInfo{Request: request, OriginModelName: modelName, UsingGroup: "default"}
+			_, err = ModelPriceHelper(ctx, info, 0, &types.TokenCountMeta{})
+			require.NoError(t, err)
+			require.Equal(t, "2K", info.TieredBillingSnapshot.EstimatedTier)
+			require.Nil(t, info.TieredBillingSnapshot.EstimatedImageCount)
+			ok, quota, result := service.TryTieredSettle(info, billingexpr.TokenParams{})
+			require.True(t, ok)
+			require.Equal(t, common.QuotaRound(0.16*common.QuotaPerUnit), quota)
+			require.Equal(t, "2K", result.MatchedTier)
 		})
 	}
 }

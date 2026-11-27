@@ -80,16 +80,31 @@ function tokenConditions(node: ExpressionNode): TokenTierCondition[] | null {
   return conditions
 }
 
+export function isImageSizeProbe(node: ExpressionNode): boolean {
+  return (
+    node.kind === 'call' &&
+    node.name === 'param' &&
+    node.args[0]?.kind === 'literal' &&
+    node.args[0].value === 'size'
+  )
+}
+
+export function hasImageSizeCondition(node: ExpressionNode): boolean {
+  if (node.kind === 'unary') return hasImageSizeCondition(node.operand)
+  if (node.kind !== 'binary') return false
+  if (node.operator === '&&' || node.operator === '||') {
+    return hasImageSizeCondition(node.left) || hasImageSizeCondition(node.right)
+  }
+  return isImageSizeProbe(node.left)
+}
+
 function imageSizeCondition(node: ExpressionNode): string | null {
   const sizes: string[] = []
   for (const part of flattenBinary(node, '||')) {
     if (
       part.kind !== 'binary' ||
       part.operator !== '==' ||
-      part.left.kind !== 'call' ||
-      part.left.name !== 'param' ||
-      part.left.args[0].kind !== 'literal' ||
-      part.left.args[0].value !== 'size' ||
+      !isImageSizeProbe(part.left) ||
       part.right.kind !== 'literal' ||
       typeof part.right.value !== 'string' ||
       part.right.value.length === 0
@@ -279,6 +294,42 @@ export function readTokenTierChain(node: ExpressionNode): TokenTier[] | null {
   const fallback = tokenTier(remaining, [])
   if (!fallback) return null
   return [...tiers, fallback]
+}
+
+/** Expand each leaf and its complete condition path for image size rules. */
+export function readImageTierTree(
+  compiled: CompiledBillingExpression
+): TokenTier[] | null {
+  const tiers: TokenTier[] = []
+  let hasSize = false
+  function visit(
+    node: ExpressionNode,
+    path: string[],
+    perImage: boolean
+  ): boolean {
+    const imagePrice = unwrapImageCount(node)
+    if (imagePrice) return !perImage && visit(imagePrice, path, true)
+    if (node.kind === 'conditional') {
+      hasSize ||= hasImageSizeCondition(node.condition)
+      const source = compiled.source.slice(
+        node.condition.start,
+        node.condition.end
+      )
+      return (
+        visit(node.yes, [...path, `(${source})`], perImage) &&
+        visit(node.no, [...path, `!(${source})`], perImage)
+      )
+    }
+    const tier = tokenTier(node, [])
+    if (!tier || (perImage && tier.billingUnit !== 'request')) return false
+    tiers.push({
+      ...tier,
+      ...(perImage ? { imageCount: true } : {}),
+      conditionText: path.join(' && '),
+    })
+    return true
+  }
+  return visit(compiled.ast, [], false) && hasSize ? tiers : null
 }
 
 export function isTimeCondition(node: ExpressionNode): boolean {

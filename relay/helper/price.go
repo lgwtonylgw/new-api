@@ -359,7 +359,10 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billing
 	if err != nil {
 		return hosttypes.PriceData{}, err
 	}
-	if billingexpr.UsedVarsByHash(exprStr, exprHash)["image_count"] {
+	// Multipart edits have no JSON body. Use the validated image fields so
+	// size and quality probes work for fixed prices without image_count too.
+	multipart := c != nil && c.Request != nil && c.Request.MultipartForm != nil && len(requestInput.Body) == 0
+	if multipart || billingexpr.UsedVarsByHash(exprStr, exprHash)["image_count"] {
 		requestInput, err = ResolveImageBillingRequestInput(c, info, requestInput)
 		if err != nil {
 			return hosttypes.PriceData{}, err
@@ -388,14 +391,6 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billing
 		return hosttypes.PriceData{}, err
 	}
 
-	freeModel := false
-	if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
-		if effectiveRatio == 0 {
-			preConsumedQuota = 0
-			freeModel = true
-		}
-	}
-
 	snapshot := &billingexpr.BillingSnapshot{
 		EstimatedImageCount:       trace.ImageCount,
 		BillingMode:               billing_setting.BillingModeTieredExpr,
@@ -418,13 +413,14 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billing
 	info.TieredBillingSnapshot = snapshot
 	info.BillingRequestInput = &requestInput
 
+	reservation := snapshot.ReservationQuota()
 	priceData := hosttypes.PriceData{
-		FreeModel:         freeModel,
+		FreeModel:         effectiveRatio == 0 && reservation == 0 && !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume,
 		GroupRatioInfo:    groupRatioInfo,
-		QuotaToPreConsume: preConsumedQuota,
+		QuotaToPreConsume: reservation,
 	}
 
-	logger.LogDebug(c, "model_price_helper_tiered result: model=%s preConsume=%d quotaBeforeGroup=%.2f groupRatio=%.2f tier=%s", billingModelName, preConsumedQuota, quotaBeforeGroup, effectiveRatio, trace.MatchedTier)
+	logger.LogDebug(c, "model_price_helper_tiered result: model=%s preConsume=%d quotaBeforeGroup=%.2f groupRatio=%.2f tier=%s", billingModelName, reservation, quotaBeforeGroup, effectiveRatio, trace.MatchedTier)
 
 	info.PriceData = priceData
 	return priceData, nil

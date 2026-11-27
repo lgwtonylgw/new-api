@@ -415,6 +415,73 @@ func TestPrepareTieredBillingForSelectedGroupStartsBillingAfterFreeGroup(t *test
 	assert.Equal(t, 400_000, userQuota)
 }
 
+func TestMixedImageTierWithZeroEstimateChecksFundingBeforeSubmit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const expr = `c == 0 ? tier("images", fixed(0.12)) * image_count : tier("tokens", c * 8)`
+	for _, tc := range []struct {
+		name    string
+		balance int
+		frozen  bool
+	}{
+		{name: "empty wallet", balance: 0},
+		{name: "funded wallet", balance: 5000},
+		{name: "frozen free tier", balance: 0, frozen: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			truncate(t)
+			const user = 710
+			seedUser(t, user, tc.balance)
+			pricing := expr
+			if tc.frozen {
+				pricing = `param("size") == "2880x2880" ? tier("images", fixed(0.12)) * image_count : tier("tokens", c * 8)`
+			}
+			snap := makeSnapshot(pricing, 1, 0, 0)
+			snap.EstimatedImageCount = common.GetPointer(1)
+			snap.EstimatedBillingUnit = billingexpr.BillingUnitRequest
+			snap.ImageGroupRatio = common.GetPointer(0.0)
+			info := &relaycommon.RelayInfo{
+				UserId: user, IsPlayground: true, OriginModelName: "mixed-image-test",
+				Request:               &dto.ImageRequest{Model: "mixed-image-test"},
+				BillingRequestInput:   &billingexpr.RequestInput{Body: []byte(`{"size":"2880x2880"}`)},
+				UserSetting:           dto.UserSetting{BillingPreference: "wallet_only"},
+				TieredBillingSnapshot: snap,
+				PriceData: types.PriceData{
+					FreeModel:      true,
+					GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1, ImageGroupRatio: snap.ImageGroupRatio},
+				},
+			}
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+			apiErr := PrepareTieredBillingForSelectedGroup(ctx, info)
+			if tc.frozen {
+				require.Nil(t, apiErr)
+				require.Nil(t, PrepareImageBillingForRequest(ctx, info, 1))
+				require.Nil(t, info.Billing)
+				return
+			}
+			if tc.balance == 0 {
+				require.NotNil(t, apiErr)
+				require.Equal(t, http.StatusForbidden, apiErr.StatusCode)
+				require.Nil(t, info.Billing)
+				return
+			}
+			require.Nil(t, apiErr)
+			require.NotNil(t, info.Billing)
+			require.Nil(t, PrepareImageBillingForRequest(ctx, info, 1))
+			require.Equal(t, 1, info.FinalPreConsumedQuota)
+
+			ok, quota, result := TryTieredSettle(info, billingexpr.TokenParams{C: 1000})
+			require.True(t, ok)
+			require.Equal(t, "tokens", result.MatchedTier)
+			require.Equal(t, 4000, quota)
+			require.NoError(t, SettleBilling(ctx, info, quota))
+			balance, err := model.GetUserQuota(user, false)
+			require.NoError(t, err)
+			require.Equal(t, 1000, balance)
+		})
+	}
+}
+
 func TestPrepareTieredBillingForSelectedGroupPaidToFreeKeepsFreeModelFalse(t *testing.T) {
 	const expr = `tier("base", p)`
 	billing := &recordingBillingSettler{preConsumedQuota: 50_000}
