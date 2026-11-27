@@ -34,6 +34,39 @@ const expression =
 const chainedExpression =
   'len <= 32000 && c <= 200 ? tier("discount", p * 0.8 + c * 2 + cr * 0.16 + cc * 0.17) : len <= 32000 ? tier("short", p * 0.8 + c * 8 + cr * 0.16 + cc * 0.17) : len <= 128000 ? tier("mid", p * 1.2 + c * 16 + cr * 0.16 + cc * 0.17) : tier("long", p * 2.4 + c * 24 + cr * 0.16 + cc * 0.17)'
 
+test('applies the image size preset as editable per-image prices', () => {
+  const onBillingExprChange = vi.fn()
+  render(
+    <TieredPricingEditor
+      billingExpr='tier("standard", fixed(0.12))'
+      requestRuleExpr=''
+      onBillingExprChange={onBillingExprChange}
+      onRequestRuleExprChange={vi.fn()}
+    />
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Image size tiers' }))
+  expect(
+    screen.getByRole('combobox', { name: 'Editor mode' })
+  ).toHaveTextContent('Visual editor')
+
+  const preset = onBillingExprChange.mock.lastCall?.[0]
+  for (const [size, matchedTier, cost] of [
+    ['1024x1024', '1K', 100000],
+    ['2048x1152', '2K', 200000],
+    ['1152x2048', '2K', 200000],
+    ['3840x2160', '4K', 300000],
+    [undefined, '4K', 300000],
+  ] as const) {
+    expect(
+      evaluateBillingExpression(preset, {
+        imageCount: 2,
+        request: { body: { size } },
+      })
+    ).toMatchObject({ status: 'success', matchedTier, cost })
+  }
+})
+
 test('configures a per-image size tier from a fixed per-request price', async () => {
   const user = userEvent.setup()
   const onBillingExprChange = vi.fn()

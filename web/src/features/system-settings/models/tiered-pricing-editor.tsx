@@ -138,6 +138,15 @@ const PRESET_GROUPS: PresetGroup[] = [
     group: 'Tiered',
     presets: [
       {
+        key: 'image-size-tiers',
+        label: 'Image size tiers',
+        expr: [
+          'param("size") == "1024x1024" ? tier("1K", fixed(0.05)) * image_count',
+          'param("size") == "2048x2048" || param("size") == "2048x1152" || param("size") == "1152x2048" ? tier("2K", fixed(0.10)) * image_count',
+          'tier("4K", fixed(0.15)) * image_count',
+        ].join('\n: '),
+      },
+      {
         key: 'claude-sonnet',
         label: 'Claude Sonnet 4.5',
         expr: 'len <= 200000 ? tier("standard", p * 3 + c * 15 + cr * 0.3 + cc * 3.75 + cc1h * 6) : tier("long_context", p * 6 + c * 22.5 + cr * 0.6 + cc * 7.5 + cc1h * 12)',
@@ -700,7 +709,7 @@ function PresetSection({ applyPreset }: PresetSectionProps) {
                 className='h-7 text-xs'
                 onClick={() => applyPreset(preset)}
               >
-                {preset.label}
+                {t(preset.label)}
               </Button>
             ))}
           </div>
