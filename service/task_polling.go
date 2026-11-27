@@ -718,7 +718,11 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 		}
 		bc.TieredSnapshot.UsageFacts = usageFacts
 		bc.TieredSnapshot.EstimatedTier = result.MatchedTier
-		RecalculateTaskQuota(ctx, task, result.ActualQuotaAfterGroup, common.NewMessage("Settled by the task usage expression"), result.Clamp)
+		reason := common.NewMessage("Settled by the task usage expression")
+		if task.Status == model.TaskStatusSuccess && result.ActualQuotaAfterGroup == task.Quota {
+			recordVideoSettlementWithoutDelta(task, result, usageFacts, reason)
+		}
+		RecalculateTaskQuota(ctx, task, result.ActualQuotaAfterGroup, reason, result.Clamp)
 		return true
 	}
 	// 按次计费的成功任务保持预扣；失败任务由调用方全额退款。

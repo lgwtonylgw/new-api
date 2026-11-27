@@ -53,10 +53,16 @@ test('applies the image size preset as editable per-image prices', () => {
   const preset = onBillingExprChange.mock.lastCall?.[0]
   for (const [size, matchedTier, cost] of [
     ['1024x1024', '1K', 100000],
+    ['1024x1536', '1K', 100000],
     ['2048x1152', '2K', 200000],
     ['1152x2048', '2K', 200000],
+    ['2304x1536', '2K', 200000],
     ['3840x2160', '4K', 300000],
-    [undefined, '4K', 300000],
+    ['3520x2336', '4K', 300000],
+    ['2336x3520', '4K', 300000],
+    [undefined, 'default', 100000],
+    ['auto', 'default', 100000],
+    ['1234x1234', '4K', 300000],
   ] as const) {
     expect(
       evaluateBillingExpression(preset, {

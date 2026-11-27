@@ -61,6 +61,32 @@ func TestFixedPriceRejectsInvalidLeavesIncludingUnselectedBranches(t *testing.T)
 	}
 }
 
+func TestFixedPriceImageRatioFollowsTheMatchedPrice(t *testing.T) {
+	for _, tc := range []struct {
+		name, expression string
+		want             int
+		perImage         bool
+	}{
+		{"per image", `c == 0 ? image_count * tier("same", fixed(0.1)) : tier("same", fixed(0.1))`, 150000, true},
+		{"per request", `c == 0 ? tier("same", fixed(0.1)) : tier("same", fixed(0.1)) * image_count`, 25000, false},
+		{"count only in condition", `image_count > 1 ? tier("bulk", fixed(0.1)) : tier("single", fixed(0.1))`, 25000, false},
+		{"count outside a conditional", `(c == 0 ? tier("image", fixed(0.1)) : tier("token", c)) * image_count`, 150000, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			snap := &billingexpr.BillingSnapshot{
+				ExprString: tc.expression, ExprHash: billingexpr.ExprHashString(tc.expression),
+				GroupRatio: 0.5, ImageGroupRatio: common.GetPointer(1.5), QuotaPerUnit: 500000,
+			}
+			result, err := billingexpr.ComputeTieredQuotaWithRequest(snap, billingexpr.TokenParams{}, billingexpr.RequestInput{
+				ImageCount: common.GetPointer(2),
+			})
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, result.ActualQuotaAfterGroup)
+			assert.Equal(t, tc.perImage, result.PerImage)
+		})
+	}
+}
+
 func TestFixedPriceQuotaBoundariesAndUnsupportedTaskSnapshots(t *testing.T) {
 	for _, tc := range []struct {
 		name, expression string

@@ -292,7 +292,8 @@ function ConditionFields(props: ConditionProps) {
             />
             <BillingConditionValueInput
               probe={node.probe}
-              value={node.value}
+              value={node.value ?? ''}
+              placeholder={node.value === null ? t('Not set') : undefined}
               invalid={errors.some(
                 (issue) => issue.message === 'Enter a valid condition value.'
               )}
@@ -303,8 +304,8 @@ function ConditionFields(props: ConditionProps) {
         {range && (node.kind === 'all' || node.kind === 'any') && (
           <BillingTimeRangeFields
             probe={comparison.probe}
-            start={range[0].value}
-            end={range[1].value}
+            start={range[0].value ?? ''}
+            end={range[1].value ?? ''}
             invalidStart={errors.some(
               (issue) =>
                 issue.id === range[0].id &&

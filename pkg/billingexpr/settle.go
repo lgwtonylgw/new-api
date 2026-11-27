@@ -35,12 +35,13 @@ func ComputeTieredQuotaWithRequest(snap *BillingSnapshot, params TokenParams, re
 	}
 
 	quotaBeforeGroup := quotaConversion(cost, snap)
-	groupRatio := ImageAwareGroupRatio(snap.GroupRatio, snap.ImageGroupRatio, trace.BillingUnit, trace.ImageCount)
+	groupRatio := ImageAwareGroupRatio(snap.GroupRatio, snap.ImageGroupRatio, trace.PerImage)
 	afterGroup, clamp := common.QuotaRoundChecked(quotaBeforeGroup * groupRatio)
 	crossed := trace.MatchedTier != snap.EstimatedTier
 
 	result := TieredResult{
 		ImageCount:             trace.ImageCount,
+		PerImage:               trace.PerImage,
 		BillingUnit:            trace.BillingUnit,
 		FixedPrice:             trace.FixedPrice,
 		ActualQuotaBeforeGroup: quotaBeforeGroup,

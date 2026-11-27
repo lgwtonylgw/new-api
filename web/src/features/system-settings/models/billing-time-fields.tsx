@@ -120,6 +120,7 @@ export function BillingConditionValueInput(props: {
   value: string
   onChange: (value: string) => void
   label?: string
+  placeholder?: string
   invalid?: boolean
   normalizeNumberDrafts?: boolean
   probe?: VisualComparison['probe']
@@ -130,7 +131,7 @@ export function BillingConditionValueInput(props: {
       <Input
         aria-label={props.label ?? t('Condition value')}
         aria-invalid={props.invalid || undefined}
-        placeholder='1024x1024'
+        placeholder={props.placeholder ?? '1024x1024'}
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
         className='w-32 max-w-full'

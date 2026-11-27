@@ -78,12 +78,14 @@ import {
   type PricingConversionPreview,
 } from '@/features/model-pricing/pricing-conversion-dialog'
 import { PricingCurrencySelector } from '@/features/model-pricing/pricing-currency-selector'
+import { ENDPOINT_TYPES } from '@/features/pricing/constants'
 import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 import { pluginExpressionsEqual } from '@/features/pricing/lib/plugin-pricing'
 import {
   createDefaultTaskVisualConfig,
   generateTaskExprFromConfig,
+  getVideoUsageDimension,
 } from '@/features/pricing/lib/task-expr'
 import type { BillingUsageSchema } from '@/features/pricing/types'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -333,6 +335,13 @@ export const ModelPricingEditorPanel = forwardRef<
   const taskUsageExamples =
     usageExamplesByModel.get(watchedValues.name.trim()) ??
     pluginVariants?.find((variant) => !variant.stale)?.usage_examples
+  const videoPresetUnavailable =
+    !getVideoUsageDimension(taskUsageSchema) &&
+    pricingModels.some(
+      (model) =>
+        model.model_name === watchedValues.name.trim() &&
+        model.supported_endpoint_types?.includes(ENDPOINT_TYPES.OPENAI_VIDEO)
+    )
   const defaultTaskBillingExpr = useMemo(
     () =>
       taskUsageSchema
@@ -1140,6 +1149,15 @@ export const ModelPricingEditorPanel = forwardRef<
 
                     <TabsContent value='tiered_expr' className='pt-0'>
                       <FieldGroup className='gap-5'>
+                        {videoPresetUnavailable && (
+                          <Alert>
+                            <AlertDescription>
+                              {t(
+                                'The video pricing template requires a task plugin that reports duration in seconds and either resolution or dimensions. Check the channel and model mapping.'
+                              )}
+                            </AlertDescription>
+                          </Alert>
+                        )}
                         {expressionEditor}
                       </FieldGroup>
                     </TabsContent>

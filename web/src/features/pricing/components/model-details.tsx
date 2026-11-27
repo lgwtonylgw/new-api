@@ -957,7 +957,7 @@ function getDynamicPriceFields(
     ...new Map(
       tiers
         .flatMap((tier) => getDynamicPriceEntries(tier, options))
-        .map((entry) => [entry.field, entry])
+        .map((entry) => [entry.key, entry])
     ).values(),
   ]
 }
@@ -971,7 +971,7 @@ function getDynamicFormattedPricesByTier(
       tier,
       new Map(
         getDynamicPriceEntries(tier, options).map((entry) => [
-          entry.field,
+          entry.key,
           entry.formatted,
         ])
       ),
@@ -1276,7 +1276,7 @@ function ProviderGroupPricingSection(
                           t(fieldEntry.shortLabel)
                         )
                       return {
-                        id: fieldEntry.field,
+                        id: fieldEntry.key,
                         header: unitLabel ? (
                           <>
                             {fieldLabel}
@@ -1290,7 +1290,7 @@ function ProviderGroupPricingSection(
                         cell: (tier: (typeof dynamicTiers)[number]) =>
                           formattedPricesByTier
                             .get(tier)
-                            ?.get(fieldEntry.field) ?? '-',
+                            ?.get(fieldEntry.key) ?? '-',
                       }
                     }),
                   ]}

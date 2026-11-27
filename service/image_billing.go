@@ -44,10 +44,11 @@ func PrepareImageBillingForRequest(c *gin.Context, info *relaycommon.RelayInfo, 
 			beforeGroup *= snap.PreConsumeMultiplier
 		}
 		group := info.PriceData.GroupRatioInfo
-		effectiveRatio := billingexpr.ImageAwareGroupRatio(group.GroupRatio, group.ImageGroupRatio, trace.BillingUnit, trace.ImageCount)
+		effectiveRatio := billingexpr.ImageAwareGroupRatio(group.GroupRatio, group.ImageGroupRatio, trace.PerImage)
 		quota, err = billingexpr.QuotaRoundStrict(beforeGroup * effectiveRatio)
 		if err == nil {
 			snap.EstimatedImageCount = trace.ImageCount
+			snap.EstimatedPerImage = trace.PerImage
 			snap.EstimatedQuotaBeforeGroup = beforeGroup
 			snap.EstimatedQuotaAfterGroup = quota
 			snap.EstimatedTier = trace.MatchedTier

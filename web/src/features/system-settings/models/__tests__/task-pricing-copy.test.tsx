@@ -60,14 +60,23 @@ afterEach(async () => {
 })
 
 it.each([
-  ['', true],
+  ['', 'resolution', '768P', '2K'],
   [
     'u("resolution") == "768P" ? tier("768P", 0.3 + u("seconds") * 0) : tier("2K", u("seconds") * 0.1)',
-    false,
+    'resolution',
+    '768P',
+    '2K',
+  ],
+  [
+    'tier("base", max(0.3, u("seconds") * 0.1))',
+    'size',
+    '1280x720',
+    '1792x1024',
   ],
 ] as const)(
-  'only applies the video preset to a new price (%s)',
-  async (billingExpr, canApply) => {
+  'applies the video preset and confirms before replacing an existing price (%s)',
+  async (billingExpr, dimension, firstSize, secondSize) => {
+    const user = userEvent.setup()
     const onBillingExprChange = vi.fn()
     const onRequestRuleExprChange = vi.fn()
     render(
@@ -76,7 +85,7 @@ it.each([
         requestRuleExpr='(param("priority") == true ? 2 : 1)'
         usageSchema={{
           seconds: { type: 'number', unit: 'second' },
-          resolution: { enum: ['768P', '2K'] },
+          [dimension]: { enum: [firstSize, secondSize] },
         }}
         onBillingExprChange={onBillingExprChange}
         onRequestRuleExprChange={onRequestRuleExprChange}
@@ -85,25 +94,33 @@ it.each([
     const preset = screen.getByRole('button', {
       name: 'Video resolution tiers',
     })
-    if (!canApply) {
-      expect(preset).toBeDisabled()
+    await user.click(preset)
+    if (billingExpr) {
+      const confirmation = await screen.findByRole('alertdialog')
       expect(onBillingExprChange).not.toHaveBeenCalled()
-      return
+      await user.click(
+        within(confirmation).getByRole('button', { name: 'Cancel' })
+      )
+      expect(onBillingExprChange).not.toHaveBeenCalled()
+
+      await user.click(preset)
+      await user.click(
+        within(await screen.findByRole('alertdialog')).getByRole('button', {
+          name: 'Apply',
+        })
+      )
     }
 
-    await userEvent.setup().click(preset)
-
-    expect(preset).toBeDisabled()
     expect(onRequestRuleExprChange).not.toHaveBeenCalled()
     const expression = onBillingExprChange.mock.lastCall?.[0]
     expect(
       evaluateBillingExpression(expression, {
-        usage: { seconds: 5, resolution: '768P' },
+        usage: { seconds: 5, [dimension]: firstSize },
       })
     ).toMatchObject({ status: 'success', cost: 0.25 })
     expect(
       evaluateBillingExpression(expression, {
-        usage: { seconds: 10, resolution: '2K' },
+        usage: { seconds: 10, [dimension]: secondSize },
       })
     ).toMatchObject({ status: 'success', cost: 0.5 })
   }

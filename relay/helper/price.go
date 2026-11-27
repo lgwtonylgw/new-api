@@ -385,7 +385,7 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billing
 	if trace.BillingUnit != billingexpr.BillingUnitRequest {
 		quotaBeforeGroup *= preConsumeMultiplier
 	}
-	effectiveRatio := billingexpr.ImageAwareGroupRatio(groupRatioInfo.GroupRatio, groupRatioInfo.ImageGroupRatio, trace.BillingUnit, trace.ImageCount)
+	effectiveRatio := billingexpr.ImageAwareGroupRatio(groupRatioInfo.GroupRatio, groupRatioInfo.ImageGroupRatio, trace.PerImage)
 	preConsumedQuota, err := billingexpr.QuotaRoundStrict(quotaBeforeGroup * effectiveRatio)
 	if err != nil {
 		return hosttypes.PriceData{}, err
@@ -393,6 +393,7 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billing
 
 	snapshot := &billingexpr.BillingSnapshot{
 		EstimatedImageCount:       trace.ImageCount,
+		EstimatedPerImage:         trace.PerImage,
 		BillingMode:               billing_setting.BillingModeTieredExpr,
 		ModelName:                 billingModelName,
 		ExprString:                exprStr,

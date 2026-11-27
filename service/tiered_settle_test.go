@@ -437,6 +437,7 @@ func TestMixedImageTierWithZeroEstimateChecksFundingBeforeSubmit(t *testing.T) {
 			}
 			snap := makeSnapshot(pricing, 1, 0, 0)
 			snap.EstimatedImageCount = common.GetPointer(1)
+			snap.EstimatedPerImage = true
 			snap.EstimatedBillingUnit = billingexpr.BillingUnitRequest
 			snap.ImageGroupRatio = common.GetPointer(0.0)
 			info := &relaycommon.RelayInfo{

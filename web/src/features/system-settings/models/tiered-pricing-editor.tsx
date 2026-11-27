@@ -54,6 +54,7 @@ import {
   USD_PRICING_CURRENCY,
   type PricingCurrency,
 } from '@/features/model-pricing/currency'
+import { IMAGE_SIZE_PRESETS } from '@/features/playground/lib/image/image-generation'
 import { useBillingTime } from '@/features/pricing/hooks/use-billing-time'
 import {
   BILLING_EXTRA_VARS,
@@ -141,8 +142,19 @@ const PRESET_GROUPS: PresetGroup[] = [
         key: 'image-size-tiers',
         label: 'Image size tiers',
         expr: [
-          'param("size") == "1024x1024" ? tier("1K", fixed(0.05)) * image_count',
-          'param("size") == "2048x2048" || param("size") == "2048x1152" || param("size") == "1152x2048" ? tier("2K", fixed(0.10)) * image_count',
+          ...[
+            { label: '1K', price: 0.05 },
+            { label: '2K', price: 0.1 },
+          ].map(({ label, price }, index) => {
+            const sizes = Object.values(IMAGE_SIZE_PRESETS).map(
+              (sizesByResolution) => sizesByResolution[index]
+            )
+            const condition = sizes
+              .map((size) => `param("size") == ${JSON.stringify(size)}`)
+              .join(' || ')
+            return `${condition} ? tier("${label}", fixed(${price})) * image_count`
+          }),
+          'param("size") == nil || param("size") == "auto" ? tier("default", fixed(0.05)) * image_count',
           'tier("4K", fixed(0.15)) * image_count',
         ].join('\n: '),
       },

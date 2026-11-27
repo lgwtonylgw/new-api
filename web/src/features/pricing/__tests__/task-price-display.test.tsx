@@ -20,7 +20,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import i18next from 'i18next'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, assert, expect, it, vi } from 'vitest'
 
 import { api } from '@/lib/api'
 import {
@@ -54,6 +54,17 @@ it('shows an explicit free request price alongside token prices with distinct un
   expect(screen.getAllByText('$0/request').length).toBeGreaterThan(0)
   expect(screen.getAllByText('Input / 1M token').length).toBeGreaterThan(0)
   expect(screen.getAllByText('Price per request').length).toBeGreaterThan(0)
+})
+
+it('labels each fixed price with its own billing unit in the breakdown', () => {
+  render(
+    <DynamicPricingBreakdown billingExpr='param("size") == "1024x1024" ? tier("small", fixed(0.1)) * image_count : tier("flat", fixed(0.2))' />
+  )
+
+  expect(screen.getAllByText('$0.1/image').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('$0.2/request').length).toBeGreaterThan(0)
+  expect(screen.queryByText('$0.2/image')).not.toBeInTheDocument()
+  expect(screen.queryByText('$0.1/request')).not.toBeInTheDocument()
 })
 
 it('renders weekday and hour conditions as time windows instead of expression source', () => {
@@ -99,6 +110,63 @@ const model: PricingModel = {
   },
 }
 const clients: QueryClient[] = []
+
+it('puts per-image and per-request prices in separate group pricing columns', () => {
+  vi.spyOn(api, 'get').mockResolvedValue({ data: { data: { groups: [] } } })
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  clients.push(client)
+  render(
+    <QueryClientProvider client={client}>
+      <ModelDetailsContent
+        model={{
+          ...model,
+          model_name: 'image-model',
+          supported_endpoint_types: ['image-generation'],
+          billing_usage_schema: undefined,
+          billing_expr:
+            'param("size") == "1024x1024" ? tier("small", fixed(0.1)) * image_count : tier("flat", fixed(0.2))',
+          image_group_ratio: { default: 1.5 },
+        }}
+        groupRatio={{ default: 0.5 }}
+        usableGroup={{ default: { desc: '', ratio: 0.5 } }}
+        endpointMap={{}}
+        autoGroups={[]}
+        priceRate={1}
+        usdExchangeRate={1}
+        tokenUnit='M'
+      />
+    </QueryClientProvider>
+  )
+
+  const imageColumn = screen.getByRole('columnheader', {
+    name: 'Per image / image',
+  })
+  const requestColumn = screen.getByRole('columnheader', {
+    name: 'Per-call / request',
+  })
+  const groupTable = imageColumn.closest('table')
+  assert(groupTable)
+  const smallCells = within(
+    within(groupTable).getByRole('row', { name: /small/ })
+  ).getAllByRole('cell')
+  const flatCells = within(
+    within(groupTable).getByRole('row', { name: /flat/ })
+  ).getAllByRole('cell')
+  expect(
+    smallCells[(imageColumn as HTMLTableCellElement).cellIndex]
+  ).toHaveTextContent('$0.15')
+  expect(
+    smallCells[(requestColumn as HTMLTableCellElement).cellIndex]
+  ).toHaveTextContent('-')
+  expect(
+    flatCells[(imageColumn as HTMLTableCellElement).cellIndex]
+  ).toHaveTextContent('-')
+  expect(
+    flatCells[(requestColumn as HTMLTableCellElement).cellIndex]
+  ).toHaveTextContent('$0.1')
+})
 
 it('quotes video specifications from resolution rates and the selected group', () => {
   const videoModel: PricingModel = {

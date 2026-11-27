@@ -51,6 +51,7 @@ const (
 // TraceResult holds side-channel info captured while an expression runs.
 type TraceResult struct {
 	ImageCount   *int               `json:"image_count,omitempty"`
+	PerImage     bool               `json:"-"`
 	BillingUnit  BillingUnit        `json:"billing_unit"`
 	FixedPrice   *float64           `json:"fixed_price,omitempty"`
 	MatchedTier  string             `json:"matched_tier"`
@@ -64,6 +65,7 @@ type TraceResult struct {
 // compiled program pointers.
 type BillingSnapshot struct {
 	EstimatedImageCount       *int           `json:"estimated_image_count,omitempty"`
+	EstimatedPerImage         bool           `json:"estimated_per_image,omitempty"`
 	BillingMode               string         `json:"billing_mode"`
 	ModelName                 string         `json:"model_name"`
 	ExprString                string         `json:"expr_string"`
@@ -85,15 +87,15 @@ type BillingSnapshot struct {
 }
 
 // ImageAwareGroupRatio applies the override only to the per-image branch.
-func ImageAwareGroupRatio(groupRatio float64, imageRatio *float64, unit BillingUnit, imageCount *int) float64 {
-	if imageRatio != nil && unit == BillingUnitRequest && imageCount != nil {
+func ImageAwareGroupRatio(groupRatio float64, imageRatio *float64, perImage bool) float64 {
+	if imageRatio != nil && perImage {
 		return *imageRatio
 	}
 	return groupRatio
 }
 
 func (snap *BillingSnapshot) EstimatedGroupRatio() float64 {
-	return ImageAwareGroupRatio(snap.GroupRatio, snap.ImageGroupRatio, snap.EstimatedBillingUnit, snap.EstimatedImageCount)
+	return ImageAwareGroupRatio(snap.GroupRatio, snap.ImageGroupRatio, snap.EstimatedPerImage)
 }
 
 // ReservationQuota keeps the funding session and quota checks active if a
@@ -117,6 +119,7 @@ type TieredResult struct {
 	// the shared injection path, not as additional snapshot state.
 	BillingTokens          *TokenParams       `json:"-"`
 	ImageCount             *int               `json:"image_count,omitempty"`
+	PerImage               bool               `json:"-"`
 	BillingUnit            BillingUnit        `json:"billing_unit"`
 	FixedPrice             *float64           `json:"fixed_price,omitempty"`
 	ActualQuotaBeforeGroup float64            `json:"actual_quota_before_group"`

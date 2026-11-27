@@ -19,24 +19,28 @@ func UsesFixedPricingByHash(expression, hash string) bool {
 	return err == nil && entry.fixedPricing
 }
 
-// Fixed-price expressions are validated to have one tier call at each leaf.
-func hasTokenPricingLeaf(node ast.Node) bool {
-	return ast.Find(node, func(part ast.Node) bool {
-		call, ok := part.(*ast.CallNode)
-		if !ok || len(call.Arguments) != 2 {
-			return false
+// Fixed-price trees have one tier at each leaf after validation.
+func fixedPricingLeafKinds(node ast.Node, withImageCount bool) (perImage, other bool) {
+	switch part := node.(type) {
+	case *ast.ConditionalNode:
+		yesImage, yesOther := fixedPricingLeafKinds(part.Exp1, withImageCount)
+		noImage, noOther := fixedPricingLeafKinds(part.Exp2, withImageCount)
+		return yesImage || noImage, yesOther || noOther
+	case *ast.BinaryNode:
+		if isRequestPriceMultiplier(part.Right) {
+			return fixedPricingLeafKinds(part.Left, withImageCount || isImageCount(part.Right))
 		}
-		callee, ok := call.Callee.(*ast.IdentifierNode)
-		if !ok || callee.Value != "tier" {
-			return false
-		}
-		if price, ok := call.Arguments[1].(*ast.CallNode); ok {
-			if name, ok := price.Callee.(*ast.IdentifierNode); ok && name.Value == "fixed" {
-				return false
+		return fixedPricingLeafKinds(part.Right, withImageCount || isImageCount(part.Left))
+	case *ast.CallNode:
+		if withImageCount {
+			if price, ok := part.Arguments[1].(*ast.CallNode); ok {
+				if name, ok := price.Callee.(*ast.IdentifierNode); ok && name.Value == "fixed" {
+					return true, false
+				}
 			}
 		}
-		return true
-	}) != nil
+	}
+	return false, true
 }
 
 // Request fields and headers are frozen. Token quantities, the billed image
@@ -69,8 +73,13 @@ func containsPricingMarker(node ast.Node) bool {
 	}) != nil
 }
 
+func isImageCount(node ast.Node) bool {
+	identifier, ok := node.(*ast.IdentifierNode)
+	return ok && identifier.Value == "image_count"
+}
+
 func isRequestPriceMultiplier(node ast.Node) bool {
-	if identifier, ok := node.(*ast.IdentifierNode); ok && identifier.Value == "image_count" {
+	if isImageCount(node) {
 		return true
 	}
 	conditional, ok := node.(*ast.ConditionalNode)

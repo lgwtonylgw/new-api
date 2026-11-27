@@ -383,7 +383,7 @@ it('explains the per-request cache rate when tapped', async () => {
 })
 
 it.each([false, true])(
-  'shows video pre-consumption and settlement separately (desktop: %s)',
+  'distinguishes estimated and settled video usage (desktop: %s)',
   (desktopTokens) => {
     renderLogs({
       desktopTokens,
@@ -398,15 +398,16 @@ it.each([false, true])(
             cache_tokens: 300,
           }),
         },
-        ...([2, 6] as const).map((type) => ({
+        ...([2, 6, 8] as const).map((type) => ({
           ...log,
           id: log.id + type,
           type,
+          quota: type === 8 ? 0 : log.quota,
           other: JSON.stringify({
             task_id: 'task_test',
             actual_quota: 100,
             billing_mode: 'tiered_expr',
-            usage_facts: { seconds: type === 2 ? 8 : 6, resolution: '2K' },
+            usage_facts: { seconds: type, size: '1280x720' },
           }),
         })),
       ],
@@ -414,10 +415,12 @@ it.each([false, true])(
 
     expect(screen.getByText('7.5s')).toBeVisible()
     expect(screen.getByText('/ 768P')).toBeVisible()
-    expect(screen.getByText('(Pre-consumed)')).toBeVisible()
-    expect(screen.getByText('8s')).toBeVisible()
+    expect(screen.getByText('(Estimated at submission)')).toBeVisible()
+    expect(screen.getByText('2s')).toBeVisible()
     expect(screen.getByText('6s')).toBeVisible()
-    expect(screen.getAllByText('/ 2K')).toHaveLength(2)
+    expect(screen.getByText('8s')).toBeVisible()
+    expect(screen.getAllByText('/ 1280x720')).toHaveLength(3)
+    expect(screen.getAllByText('(Settled usage)')).toHaveLength(3)
     expect(screen.queryByText('1,200 / 800')).not.toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: /Input cache hit rate/ })

@@ -1621,6 +1621,33 @@ func TestSettle_TieredSuccessStillRecomputes(t *testing.T) {
 	assert.Equal(t, map[string]any{"seconds": float64(8), "clips": float64(2)}, facts)
 }
 
+func TestSettle_TieredVideoRecordsUsageWithoutQuotaDelta(t *testing.T) {
+	truncate(t)
+	const userID, initialQuota, preConsumed = 38, 10000, 5
+	seedUser(t, userID, initialQuota)
+	task := makeTask(userID, 0, preConsumed, 0, BillingSourceWallet, 0)
+	task.Status = model.TaskStatusSuccess
+	expression := `tier("base", u("seconds"))`
+	task.PrivateData.BillingContext.TieredSnapshot = &billingexpr.BillingSnapshot{
+		ExprString: expression, ExprHash: billingexpr.ExprHashString(expression),
+		QuotaPerUnit: 1, GroupRatio: 1, TaskUsageBilling: true,
+		UsageFacts: map[string]any{"seconds": float64(5), "size": "1280x720"},
+	}
+	actualFacts := map[string]any{"size": "720x1280"}
+	require.True(t, settleTaskBillingOnComplete(context.Background(), &mockAdaptor{}, task, &relaycommon.TaskInfo{
+		Status: model.TaskStatusSuccess, UsageFacts: actualFacts,
+	}))
+	assert.Equal(t, initialQuota, getUserQuota(t, userID))
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeTaskSettlement, log.Type)
+	assert.Zero(t, log.Quota)
+	var other map[string]any
+	require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+	assert.Equal(t, float64(preConsumed), other["actual_quota"])
+	assert.Equal(t, map[string]any{"seconds": float64(5), "size": "720x1280"}, other["usage_facts"])
+}
+
 func TestSettle_TieredUsageFactsMergeCompletionOverSubmission(t *testing.T) {
 	tests := []struct {
 		name            string

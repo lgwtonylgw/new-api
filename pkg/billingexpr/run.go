@@ -91,6 +91,10 @@ func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, usedVars map[
 			trace.FixedPrice = &amount
 			return amount * 1_000_000
 		},
+		imageCountTraceFunction: func(count float64) float64 {
+			trace.PerImage = true
+			return count
+		},
 		requestRuleTraceFunction: func(ruleIndex int, matched bool, multiplier float64) float64 {
 			if matched && ruleIndex >= 0 && ruleIndex < len(trace.RequestRules) {
 				trace.RequestRules[ruleIndex].Matched = true
@@ -155,6 +159,7 @@ func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, usedVars map[
 	if !ok {
 		return 0, trace, fmt.Errorf("expr result is %T, want float64", out)
 	}
+	trace.PerImage = trace.PerImage && trace.BillingUnit == BillingUnitRequest
 	return f, trace, nil
 }
 

@@ -353,6 +353,19 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		logType = model.LogTypeRefund
 		logQuota = -quotaDelta
 	}
+	recordTaskSettlement(task, logType, logQuota, preConsumedQuota, actualQuota, reason, clamps)
+}
+
+func recordVideoSettlementWithoutDelta(task *model.Task, result billingexpr.TieredResult, facts map[string]any, reason *common.Message) {
+	seconds, _ := facts["seconds"].(float64)
+	resolution, _ := facts["resolution"].(string)
+	size, _ := facts["size"].(string)
+	if seconds > 0 && (strings.TrimSpace(resolution) != "" || strings.TrimSpace(size) != "") {
+		recordTaskSettlement(task, model.LogTypeTaskSettlement, 0, task.Quota, result.ActualQuotaAfterGroup, reason, []*common.QuotaClamp{result.Clamp})
+	}
+}
+
+func recordTaskSettlement(task *model.Task, logType, logQuota, preConsumedQuota, actualQuota int, reason *common.Message, clamps []*common.QuotaClamp) {
 	other := taskBillingOther(task)
 	other.SetPublic("task_id", task.TaskID)
 	other.SetPublic("pre_consumed_quota", preConsumedQuota)

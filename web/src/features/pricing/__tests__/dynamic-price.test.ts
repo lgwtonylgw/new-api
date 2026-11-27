@@ -655,6 +655,29 @@ describe('task dynamic pricing', () => {
     expect(getCardExamplePrice(conditional, options)).toBeNull()
   })
 
+  test('includes another resolution before filling the video quote list', () => {
+    const model = pricingModel({
+      billing_mode: 'tiered_expr',
+      billing_expr:
+        'u("resolution") == "768P" ? tier("768P", u("seconds") * 0.05) : tier("2K", u("seconds") * 0.1)',
+      billing_usage_schema: {
+        seconds: { type: 'number', unit: 'second' },
+        resolution: { enum: ['768P', '2K'] },
+      },
+      billing_usage_examples: ['768P', '2K'].flatMap((resolution) =>
+        [5, 10, 15].map((seconds) => ({
+          label: `${seconds}s / ${resolution}`,
+          facts: { seconds, resolution },
+        }))
+      ),
+    })
+    expect(getVideoSpecPrices(model, { tokenUnit: 'M' })).toEqual([
+      { label: '5s / 768P', formatted: '$0.25' },
+      { label: '5s / 2K', formatted: '$0.5' },
+      { label: '10s / 768P', formatted: '$0.5' },
+    ])
+  })
+
   test('returns null when the expression is not canonical or examples are missing', () => {
     const schema = {
       tokens: { type: 'number' as const, unit: 'token' as const },

@@ -26,6 +26,7 @@ import {
 } from '@/features/pricing/lib/billing-expr'
 import { translateServerText } from '@/lib/server-error-message'
 
+import { LOG_TYPE_ENUM } from '../constants'
 import type { UsageLog } from '../data/schema'
 import type { LogOtherData } from '../types'
 import { buildQuotaAuditOperation } from './quota-audit-operation'
@@ -213,8 +214,16 @@ export function getImageLogUsage(other: LogOtherData | null) {
 }
 
 export function getMediaLogUsage(type: number, other: LogOtherData | null) {
-  if (!other || (type !== 2 && type !== 6)) return null
-  if (type === 2) {
+  const consume = type === LOG_TYPE_ENUM.CONSUME
+  if (
+    !other ||
+    (!consume &&
+      type !== LOG_TYPE_ENUM.REFUND &&
+      type !== LOG_TYPE_ENUM.TASK_SETTLEMENT)
+  ) {
+    return null
+  }
+  if (consume) {
     const image = getImageLogUsage(other)
     if (image) return image
   }
@@ -224,9 +233,12 @@ export function getMediaLogUsage(type: number, other: LogOtherData | null) {
     typeof other.actual_quota === 'number' &&
     Number.isFinite(other.actual_quota) &&
     other.actual_quota >= 0
-  if (!settled && (type !== 2 || !other.is_task)) return null
+  if (!settled && (!consume || !other.is_task)) return null
   const seconds = other.usage_facts?.seconds
-  const resolution = other.usage_facts?.resolution
+  const recordedResolution = other.usage_facts?.resolution
+  const resolution =
+    (typeof recordedResolution === 'string' && recordedResolution.trim()) ||
+    other.usage_facts?.size
   if (
     typeof seconds !== 'number' ||
     !Number.isFinite(seconds) ||
@@ -236,10 +248,13 @@ export function getMediaLogUsage(type: number, other: LogOtherData | null) {
   ) {
     return null
   }
+  let stage: 'estimated' | 'settled' | undefined
+  if (settled) stage = 'settled'
+  else if (!other.task_sync) stage = 'estimated'
   return {
     seconds,
     resolution: resolution.trim(),
-    preConsumed: !settled && other.task_sync !== true,
+    stage,
   }
 }
 

@@ -86,6 +86,16 @@ export function getTaskEnumFields(
     .sort(([left], [right]) => left.localeCompare(right))
 }
 
+export function getVideoUsageDimension(
+  schema: BillingUsageSchema | null | undefined
+): 'resolution' | 'size' | undefined {
+  if (schema?.seconds?.type !== 'number' || schema.seconds.unit !== 'second') {
+    return undefined
+  }
+  if (schema.resolution?.enum?.length) return 'resolution'
+  if (schema.size?.enum?.length) return 'size'
+}
+
 export function getTaskEnumCombinations(
   schema: BillingUsageSchema | null | undefined
 ): Record<string, string>[] {
@@ -294,7 +304,7 @@ export function evaluateTaskUsageExamples(
   now?: Date
 ): { label: string; total: number }[] {
   if (!expression || !schema || !examples?.length) return []
-  if (schema.seconds?.unit === 'second' && schema.resolution?.enum?.length) {
+  if (getVideoUsageDimension(schema)) {
     const compiled = compileBillingExpression(expression)
     if (compiled.status !== 'ready') return []
     return examples.flatMap(({ label, facts }) => {

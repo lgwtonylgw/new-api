@@ -341,7 +341,11 @@ func InjectTieredBillingInfo(other *model.LogOther, relayInfo *relaycommon.Relay
 	}
 	other.SetPublic("billing_mode", "tiered_expr")
 	other.SetPublic("expr_b64", base64.StdEncoding.EncodeToString([]byte(snap.ExprString)))
-	if snap.ImageGroupRatio != nil && isFixedPriceSettlement(relayInfo, result) && snap.EstimatedImageCount != nil {
+	perImage := snap.EstimatedPerImage
+	if result != nil {
+		perImage = result.PerImage
+	}
+	if snap.ImageGroupRatio != nil && perImage {
 		setImageGroupRatioLogInfo(other, *snap.ImageGroupRatio)
 	}
 	if result != nil {
@@ -354,7 +358,7 @@ func InjectTieredBillingInfo(other *model.LogOther, relayInfo *relaycommon.Relay
 				"ai": tokens.AI, "ao": tokens.AO,
 			})
 		}
-		if result.ImageCount != nil {
+		if result.ImageCount != nil && (perImage || result.BillingUnit != billingexpr.BillingUnitRequest) {
 			other.SetPublic("image_count", *result.ImageCount)
 		}
 		other.SetPublic("matched_tier", result.MatchedTier)
@@ -368,7 +372,7 @@ func InjectTieredBillingInfo(other *model.LogOther, relayInfo *relaycommon.Relay
 			other.SetPublic("request_rules", result.RequestRules)
 		}
 	} else if snap.EstimatedBillingUnit != "" {
-		if snap.EstimatedImageCount != nil {
+		if snap.EstimatedImageCount != nil && (perImage || snap.EstimatedBillingUnit != billingexpr.BillingUnitRequest) {
 			other.SetPublic("image_count", *snap.EstimatedImageCount)
 		}
 		other.SetPublic("matched_tier", snap.EstimatedTier)

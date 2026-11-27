@@ -38,7 +38,11 @@ import {
 import { compileBillingExpression } from './billing-expression/parser'
 import { getDisplayGroupRatio } from './model-helpers'
 import { withPluginPricing } from './plugin-pricing'
-import { evaluateTaskUsageExamples, getTaskNumberFields } from './task-expr'
+import {
+  evaluateTaskUsageExamples,
+  getTaskNumberFields,
+  getVideoUsageDimension,
+} from './task-expr'
 import { getTaskPricingDisplayTiers } from './task-matrix-display'
 
 export type DynamicPriceOptions = {
@@ -290,7 +294,7 @@ export function getDynamicPriceEntries(
   ) {
     return [
       {
-        key: 'fixed',
+        key: tier.imageCount ? 'fixed-image' : 'fixed',
         field: 'fixedPrice',
         label: tier.imageCount ? 'Price per image' : 'Price per request',
         shortLabel: tier.imageCount ? 'Per image' : 'Per-call',
@@ -525,13 +529,23 @@ export function getDynamicPricingSummary(
       (item) => !isTaskPricingTier(item) && item.billingUnit !== 'request'
     )
     const requestTier = summaryTiers.find(
-      (item) => !isTaskPricingTier(item) && item.billingUnit === 'request'
+      (item) =>
+        !isTaskPricingTier(item) &&
+        item.billingUnit === 'request' &&
+        !item.imageCount
     )
-    if (tokenTier && requestTier) {
-      isMixedBilling = true
+    const imageTier = summaryTiers.find(
+      (item) =>
+        !isTaskPricingTier(item) &&
+        item.billingUnit === 'request' &&
+        item.imageCount
+    )
+    isMixedBilling = Boolean(tokenTier && (requestTier || imageTier))
+    if (isMixedBilling || (requestTier && imageTier)) {
       entries = [
-        ...getDynamicPriceEntries(tokenTier, options),
-        ...getDynamicPriceEntries(requestTier, options),
+        ...getDynamicPriceEntries(tokenTier ?? null, options),
+        ...getDynamicPriceEntries(requestTier ?? null, options),
+        ...getDynamicPriceEntries(imageTier ?? null, options),
       ]
     }
   }
@@ -643,21 +657,31 @@ export function getVideoSpecPrices(
 
   const schema = model.billing_usage_schema
   const examples = model.billing_usage_examples
-  if (schema?.seconds?.unit !== 'second' || !schema.resolution?.enum?.length) {
-    return []
+  const dimension = getVideoUsageDimension(schema)
+  if (!dimension) return []
+  const byResolution = new Map<string, NonNullable<typeof examples>>()
+  for (const example of examples ?? []) {
+    const { seconds } = example.facts
+    const resolution = example.facts[dimension]
+    if (
+      typeof seconds !== 'number' ||
+      !Number.isFinite(seconds) ||
+      seconds <= 0 ||
+      typeof resolution !== 'string'
+    ) {
+      continue
+    }
+    const group = byResolution.get(resolution)
+    if (group) group.push(example)
+    else byResolution.set(resolution, [example])
   }
-  const videoSpecs = examples?.filter(
-    ({ facts }) =>
-      typeof facts.seconds === 'number' &&
-      facts.seconds > 0 &&
-      typeof facts.resolution === 'string'
+  const quotes = [...byResolution.values()].map((group) =>
+    evaluateTaskUsageExamples(model.billing_expr, schema, group, options.now)
   )
-  return evaluateTaskUsageExamples(
-    model.billing_expr,
-    schema,
-    videoSpecs,
-    options.now
-  )
+  return [
+    ...quotes.flatMap((group) => group.slice(0, 1)),
+    ...quotes.flatMap((group) => group.slice(1)),
+  ]
     .slice(0, 3)
     .map(({ label, total }) => ({
       label,

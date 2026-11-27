@@ -31,7 +31,7 @@ export type VisualComparison = Origin & {
   probe: 'p' | 'c' | 'len' | 'size' | TimeFunction
   timezone: string
   operator: '<' | '<=' | '>' | '>=' | '==' | '!='
-  value: string
+  value: string | null
 }
 export type VisualCondition =
   | VisualComparison
@@ -119,7 +119,7 @@ function readVisualCondition(node: ExpressionNode): VisualCondition | null {
     probeCall.args[0]?.kind === 'literal' &&
     probeCall.args[0].value === 'size' &&
     (node.operator === '==' || node.operator === '!=') &&
-    typeof node.right.value === 'string'
+    (typeof node.right.value === 'string' || node.right.value === null)
   ) {
     return {
       ...identity,
@@ -313,12 +313,15 @@ function writeVisualCondition(
     return `(${children.map((child) => `(${child})`).join(` ${operator} `)})`
   }
   const isImageSize = node.probe === 'size'
-  const value = isImageSize ? node.value : parseNonNegativeNumber(node.value)
-  const valueText = isImageSize ? JSON.stringify(node.value) : node.value
+  const draft = node.value ?? ''
+  const value = isImageSize ? node.value : parseNonNegativeNumber(draft)
+  let valueText = draft
+  if (isImageSize)
+    valueText = node.value === null ? 'nil' : JSON.stringify(draft)
   let valid = value !== null
   if (isImageSize) {
     valid =
-      node.value.trim().length > 0 &&
+      (node.value === null || draft.trim().length > 0) &&
       (node.operator === '==' || node.operator === '!=')
   }
   if ((TIME_FUNCTIONS as readonly string[]).includes(node.probe)) {

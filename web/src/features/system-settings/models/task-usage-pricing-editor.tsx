@@ -58,6 +58,7 @@ import {
   getTaskEnumCombinations,
   getTaskEnumFields,
   getTaskNumberFields,
+  getVideoUsageDimension,
   taskMatrixToTiers,
   tryParseTaskMatrixConfig,
   tryParseTaskVisualConfig,
@@ -295,6 +296,7 @@ export const TaskUsagePricingEditor = memo(function TaskUsagePricingEditor(
     return (parsed ?? createDefaultTaskMatrixConfig(props.usageSchema)).rows
   })
   const [confirmVisualSwitch, setConfirmVisualSwitch] = useState(false)
+  const [confirmVideoPreset, setConfirmVideoPreset] = useState(false)
   const [rawExpr, setRawExpr] = useState(() =>
     combineBillingExpr(props.billingExpr, props.requestRuleExpr)
   )
@@ -354,6 +356,18 @@ export const TaskUsagePricingEditor = memo(function TaskUsagePricingEditor(
         props.usageSchema
       )
     )
+  }
+
+  const applyVideoPreset = () => {
+    const { rows } = createDefaultTaskMatrixConfig(props.usageSchema)
+    publishRows(
+      rows.map((row) => ({
+        ...row,
+        unitPrices: { ...row.unitPrices, seconds: 0.05 },
+      }))
+    )
+    setEditorMode('visual')
+    setConfirmVideoPreset(false)
   }
 
   const handleRowChange = (index: number, next: TaskMatrixRow) => {
@@ -421,10 +435,7 @@ export const TaskUsagePricingEditor = memo(function TaskUsagePricingEditor(
       row.constant === 0 &&
       numberFields.every(([field]) => !(row.unitPrices[field] > 0))
   )
-  const showVideoPreset =
-    editorMode === 'visual' &&
-    props.usageSchema.seconds?.unit === 'second' &&
-    Boolean(props.usageSchema.resolution?.enum?.length)
+  const showVideoPreset = Boolean(getVideoUsageDimension(props.usageSchema))
 
   return (
     <div className='space-y-5'>
@@ -445,6 +456,18 @@ export const TaskUsagePricingEditor = memo(function TaskUsagePricingEditor(
         destructive={!rawMatrix}
         handleConfirm={handleConfirmVisualSwitch}
       />
+      {showVideoPreset && (
+        <ConfirmDialog
+          open={confirmVideoPreset}
+          onOpenChange={setConfirmVideoPreset}
+          title={t('Video resolution tiers')}
+          desc={t(
+            'Applying this template replaces the draft base prices with example per-second prices. Review the prices before saving.'
+          )}
+          confirmText={t('Apply')}
+          handleConfirm={applyVideoPreset}
+        />
+      )}
       <div className='grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end'>
         <Field className='gap-2'>
           <FieldLabel>{t('Editor mode')}</FieldLabel>
@@ -491,21 +514,13 @@ export const TaskUsagePricingEditor = memo(function TaskUsagePricingEditor(
             type='button'
             size='sm'
             variant='outline'
-            disabled={
-              Boolean(props.billingExpr.trim()) ||
-              matrixRows.some((row) => row.unitPrices.seconds > 0)
-            }
-            onClick={() =>
-              publishRows(
-                matrixRows.map((row) => ({
-                  ...row,
-                  unitPrices: {
-                    ...row.unitPrices,
-                    seconds: row.unitPrices.seconds || 0.05,
-                  },
-                }))
-              )
-            }
+            onClick={() => {
+              if (props.billingExpr.trim()) {
+                setConfirmVideoPreset(true)
+                return
+              }
+              applyVideoPreset()
+            }}
           >
             {t('Video resolution tiers')}
           </Button>

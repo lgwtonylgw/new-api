@@ -80,14 +80,15 @@ type Log struct {
 
 // don't use iota, avoid change log type value
 const (
-	LogTypeUnknown = 0
-	LogTypeTopup   = 1
-	LogTypeConsume = 2
-	LogTypeManage  = 3
-	LogTypeSystem  = 4
-	LogTypeError   = 5
-	LogTypeRefund  = 6
-	LogTypeLogin   = 7
+	LogTypeUnknown        = 0
+	LogTypeTopup          = 1
+	LogTypeConsume        = 2
+	LogTypeManage         = 3
+	LogTypeSystem         = 4
+	LogTypeError          = 5
+	LogTypeRefund         = 6
+	LogTypeLogin          = 7
+	LogTypeTaskSettlement = 8
 )
 
 func ensureLogRequestId(log *Log) {
@@ -424,7 +425,7 @@ type RecordTaskBillingLogParams struct {
 }
 
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
-	if params.LogType == LogTypeConsume && !common.LogConsumeEnabled {
+	if (params.LogType == LogTypeConsume || params.LogType == LogTypeTaskSettlement) && !common.LogConsumeEnabled {
 		return
 	}
 	username, _ := GetUsernameById(params.UserId, false)

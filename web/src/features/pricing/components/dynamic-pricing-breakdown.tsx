@@ -425,32 +425,27 @@ export function DynamicPricingBreakdown({
           ? 0
           : Number(tier[variable.field as string as keyof ParsedTier] || 0),
     }))
-    if (
-      tiers.some(
-        (tier) => !isTaskBreakdownTier(tier) && tier.billingUnit === 'request'
-      )
-    ) {
-      for (const field of fields) field.showTokenUnit = true
-      fields.push({
-        id: 'fixedPrice',
-        label: tiers.some(
-          (tier) => !isTaskBreakdownTier(tier) && tier.imageCount
-        )
-          ? 'Price per image'
-          : 'Price per request',
-        labelKind: 'i18n',
-        unit: tiers.some(
-          (tier) => !isTaskBreakdownTier(tier) && tier.imageCount
-        )
-          ? 'image'
-          : 'request',
-        value: (tier) =>
-          !isTaskBreakdownTier(tier) && tier.billingUnit === 'request'
-            ? Number(tier.fixedPrice)
-            : Number.NaN,
-      })
+    const fixedFields: BreakdownPriceField[] = []
+    for (const unit of ['request', 'image'] as const) {
+      const matchesUnit = (tier: BreakdownTier): tier is ParsedTier =>
+        !isTaskBreakdownTier(tier) &&
+        tier.billingUnit === 'request' &&
+        Boolean(tier.imageCount) === (unit === 'image')
+      if (tiers.some(matchesUnit)) {
+        fixedFields.push({
+          id: `fixed-${unit}`,
+          label: unit === 'image' ? 'Price per image' : 'Price per request',
+          labelKind: 'i18n',
+          unit,
+          value: (tier) =>
+            matchesUnit(tier) ? Number(tier.fixedPrice) : Number.NaN,
+        })
+      }
     }
-    return fields
+    if (fixedFields.length > 0) {
+      for (const field of fields) field.showTokenUnit = true
+    }
+    return [...fields, ...fixedFields]
   })()
   const mobileTierKeyOccurrences = new Map<string, number>()
   const requestRuleKeyOccurrences = new Map<string, number>()

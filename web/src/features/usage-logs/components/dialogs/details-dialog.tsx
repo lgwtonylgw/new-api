@@ -68,6 +68,7 @@ import { translateServerText } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
 import { AuditDetailFields } from '../../audit/components/audit-detail-fields'
+import { LOG_TYPE_ENUM } from '../../constants'
 import type { UsageLog } from '../../data/schema'
 import {
   parseLogOther,
@@ -367,6 +368,8 @@ function BillingBreakdown(props: {
     !Array.isArray(other.usage_facts)
       ? Object.entries(other.usage_facts)
       : []
+  const isTaskSettlement = log.type === LOG_TYPE_ENUM.TASK_SETTLEMENT
+  const totalCost = isTaskSettlement ? other.actual_quota : log.quota
 
   return (
     <DetailSection label={t('Billing Details')}>
@@ -390,9 +393,20 @@ function BillingBreakdown(props: {
       )}
       <DetailRow
         label={t('Total Cost')}
-        value={formatLogQuota(log.quota)}
+        value={
+          totalCost !== undefined && Number.isFinite(totalCost)
+            ? formatLogQuota(totalCost)
+            : '-'
+        }
         mono
       />
+      {isTaskSettlement && (
+        <DetailRow
+          label={t('Settlement adjustment')}
+          value={formatLogQuota(log.quota)}
+          mono
+        />
+      )}
     </DetailSection>
   )
 }
@@ -532,12 +546,14 @@ export function DetailsDialog(props: DetailsDialogProps) {
 
   const isViolation = isViolationFeeLog(other)
   const isRefund = props.log.type === 6
-  const isConsume = props.log.type === 2
+  const hasBillingDetails =
+    props.log.type === LOG_TYPE_ENUM.CONSUME ||
+    props.log.type === LOG_TYPE_ENUM.TASK_SETTLEMENT
   const isTopup = props.log.type === 1
   const isManage = props.log.type === 3
   const isSubscription = other?.billing_source === 'subscription'
   const isTieredBilling =
-    isConsume &&
+    hasBillingDetails &&
     !isViolation &&
     other?.billing_mode === 'tiered_expr' &&
     !!other?.expr_b64
@@ -1217,8 +1233,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
           <TokenBreakdown log={props.log} other={other} />
         )}
 
-        {/* Billing breakdown (consume type) */}
-        {isConsume && other && !isViolation && (
+        {hasBillingDetails && other && !isViolation && (
           <BillingBreakdown
             log={props.log}
             other={other}
@@ -1251,7 +1266,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
 
         {/* Admin billing mode indicator for non-consume */}
         {props.isAdmin &&
-          !isConsume &&
+          !hasBillingDetails &&
           props.log.type !== 6 &&
           other?.admin_info && (
             <DetailRow

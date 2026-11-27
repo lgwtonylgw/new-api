@@ -169,10 +169,14 @@ function describeBillingCondition(
     (node.operator === '==' || node.operator === '!=') &&
     isImageSizeProbe(node.left) &&
     node.right.kind === 'literal' &&
-    typeof node.right.value === 'string'
+    (typeof node.right.value === 'string' || node.right.value === null)
   ) {
+    const size =
+      node.right.value === null
+        ? t('Not set')
+        : JSON.stringify(node.right.value)
     return {
-      text: `${t('Image size')} ${node.operator} ${JSON.stringify(node.right.value)}`,
+      text: `${t('Image size')} ${node.operator} ${size}`,
       kind: 'combined',
       timezone: '',
     }

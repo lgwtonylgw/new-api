@@ -185,7 +185,7 @@ func refreshTieredBillingGroup(relayInfo *relaycommon.RelayInfo) (*billingexpr.B
 	}
 
 	group := relayInfo.PriceData.GroupRatioInfo
-	estimatedRatio := billingexpr.ImageAwareGroupRatio(group.GroupRatio, group.ImageGroupRatio, snap.EstimatedBillingUnit, snap.EstimatedImageCount)
+	estimatedRatio := billingexpr.ImageAwareGroupRatio(group.GroupRatio, group.ImageGroupRatio, snap.EstimatedPerImage)
 	if estimatedRatio != snap.EstimatedGroupRatio() {
 		estimatedQuota, err := billingexpr.QuotaRoundStrict(snap.EstimatedQuotaBeforeGroup * estimatedRatio)
 		if err != nil {

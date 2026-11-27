@@ -24,7 +24,7 @@ import { formatNumber } from '@/lib/format'
 
 type MediaLogUsageProps =
   | { count: number; tier: string }
-  | { seconds: number; resolution: string; preConsumed: boolean }
+  | { seconds: number; resolution: string; stage?: 'estimated' | 'settled' }
 
 export function MediaLogUsage(props: MediaLogUsageProps) {
   const { t, i18n } = useTranslation()
@@ -44,10 +44,14 @@ export function MediaLogUsage(props: MediaLogUsageProps) {
         {video && (
           <>
             <span className='text-muted-foreground'> / {props.resolution}</span>
-            {props.preConsumed && (
+            {props.stage && (
               <span className='text-muted-foreground'>
                 {' '}
-                ({t('Pre-consumed')})
+                (
+                {props.stage === 'settled'
+                  ? t('Settled usage')
+                  : t('Estimated at submission')}
+                )
               </span>
             )}
           </>

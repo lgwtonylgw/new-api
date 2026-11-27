@@ -21,6 +21,9 @@ import { render, screen, within } from '@testing-library/react'
 import i18next from 'i18next'
 import { afterEach, beforeAll, describe, expect, test } from 'vitest'
 
+import { formatLogQuota } from '@/lib/format'
+
+import { LOG_TYPE_ENUM } from '../../constants'
 import type { UsageLog } from '../../data/schema'
 import type { LogOtherData } from '../../types'
 import { DetailsDialog } from '../dialogs/details-dialog'
@@ -64,7 +67,11 @@ function makeLog(other: LogOtherData): UsageLog {
   }
 }
 
-function renderDetails(other: LogOtherData, promptTokens = 0): QueryClient {
+function renderDetails(
+  other: LogOtherData,
+  promptTokens = 0,
+  overrides?: Partial<Pick<UsageLog, 'type' | 'quota'>>
+): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -79,7 +86,7 @@ function renderDetails(other: LogOtherData, promptTokens = 0): QueryClient {
   render(
     <QueryClientProvider client={queryClient}>
       <DetailsDialog
-        log={{ ...makeLog(other), prompt_tokens: promptTokens }}
+        log={{ ...makeLog(other), prompt_tokens: promptTokens, ...overrides }}
         isAdmin={false}
         isRoot={false}
         open
@@ -246,6 +253,28 @@ describe('usage facts billing details', () => {
       usageHeader.compareDocumentPosition(totalCost) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
+  })
+
+  test('shows the final video charge and the zero settlement adjustment separately', () => {
+    queryClients.push(
+      renderDetails(
+        {
+          billing_mode: 'tiered_expr',
+          expr_b64: btoa('tier("768P", u("seconds") * 0.08)'),
+          matched_tier: '768P',
+          usage_facts: { seconds: 5, resolution: '768P' },
+          actual_quota: 200000,
+        },
+        0,
+        { type: LOG_TYPE_ENUM.TASK_SETTLEMENT, quota: 0 }
+      )
+    )
+
+    expect(rowValue('Matched Tier')).toBe('768P')
+    expect(rowValue('resolution')).toBe('768P')
+    expect(rowValue('seconds')).toBe('5')
+    expect(rowValue('Total Cost')).toBe(formatLogQuota(200000))
+    expect(rowValue('Settlement adjustment')).toBe(formatLogQuota(0))
   })
 
   test('does not render usage parameter rows when usage_facts is absent', () => {
