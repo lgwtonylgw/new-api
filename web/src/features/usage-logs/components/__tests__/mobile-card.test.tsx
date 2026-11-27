@@ -378,6 +378,84 @@ it('explains the per-request cache rate when tapped', async () => {
 })
 
 it.each([false, true])(
+  'shows billable image count and the recorded tier in the usage column (desktop: %s)',
+  (desktopTokens) => {
+    renderLogs({
+      desktopTokens,
+      logs: [
+        {
+          ...log,
+          other: JSON.stringify({
+            billing_unit: 'request',
+            image_count: 2,
+            matched_tier: '2K',
+            cache_tokens: 300,
+          }),
+        },
+      ],
+    })
+
+    expect(screen.getByText('2 images')).toBeVisible()
+    expect(screen.getByText('(2K)')).toBeVisible()
+    expect(screen.queryByText('1,200 / 800')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Input cache hit rate/ })
+    ).not.toBeInTheDocument()
+  }
+)
+
+it.each([false, true])(
+  'shows the quantity for older fixed-price image logs without a tier (desktop: %s)',
+  (desktopTokens) => {
+    renderLogs({
+      desktopTokens,
+      logs: [
+        {
+          ...log,
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          other: JSON.stringify({
+            model_price: 0.12,
+            content_parts: [
+              { key: 'Size {{size}}', params: { size: '2880x2880' } },
+              { key: 'Image count {{count}}', params: { count: 3 } },
+            ],
+          }),
+        },
+      ],
+    })
+
+    expect(screen.getByText('3 images')).toBeVisible()
+    expect(screen.queryByText('(2K)')).not.toBeInTheDocument()
+  }
+)
+
+it.each([false, true])(
+  'keeps the token display for token-billed image requests (desktop: %s)',
+  (desktopTokens) => {
+    renderLogs({
+      desktopTokens,
+      logs: [
+        {
+          ...log,
+          other: JSON.stringify({
+            billing_unit: 'token',
+            image_count: 2,
+            matched_tier: '2K',
+            cache_tokens: 300,
+          }),
+        },
+      ],
+    })
+
+    expect(screen.queryByText('2 images')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Input cache hit rate: 25.0%' })
+    ).toBeVisible()
+  }
+)
+
+it.each([false, true])(
   'keeps the cache rate and cache token counts on one line (desktop: %s)',
   (desktopTokens) => {
     renderLogs({ desktopTokens })

@@ -34,6 +34,116 @@ const expression =
 const chainedExpression =
   'len <= 32000 && c <= 200 ? tier("discount", p * 0.8 + c * 2 + cr * 0.16 + cc * 0.17) : len <= 32000 ? tier("short", p * 0.8 + c * 8 + cr * 0.16 + cc * 0.17) : len <= 128000 ? tier("mid", p * 1.2 + c * 16 + cr * 0.16 + cc * 0.17) : tier("long", p * 2.4 + c * 24 + cr * 0.16 + cc * 0.17)'
 
+test('configures a per-image size tier from a fixed per-request price', async () => {
+  const user = userEvent.setup()
+  const onBillingExprChange = vi.fn()
+  render(
+    <TieredPricingEditor
+      billingExpr='tier("standard", fixed(0.12))'
+      requestRuleExpr=''
+      onBillingExprChange={onBillingExprChange}
+      onRequestRuleExprChange={vi.fn()}
+    />
+  )
+  await user.click(screen.getByRole('combobox', { name: 'Tier billing mode' }))
+  await user.click(screen.getByRole('option', { name: 'Per image' }))
+  expect(screen.getByRole('textbox', { name: 'Price per image' })).toHaveValue(
+    '0.12'
+  )
+  expect(onBillingExprChange).toHaveBeenLastCalledWith(
+    'tier("standard", fixed(0.12)) * image_count'
+  )
+
+  await user.click(screen.getByRole('button', { name: 'Add pricing branch' }))
+  const conditionInput = screen.getByRole('combobox', {
+    name: 'Condition input',
+  })
+  expect(conditionInput).toHaveTextContent('Image size')
+  expect(
+    screen.getByRole('combobox', { name: 'Comparison operator' })
+  ).toHaveTextContent('==')
+  fireEvent.change(screen.getByRole('textbox', { name: 'Condition value' }), {
+    target: { value: '2880x2880' },
+  })
+  const branchSection = conditionInput.closest('section')
+  assert(branchSection)
+  const branch = within(branchSection)
+  fireEvent.change(branch.getByRole('textbox', { name: 'Tier name' }), {
+    target: { value: '2K' },
+  })
+  fireEvent.change(branch.getByRole('textbox', { name: 'Price per image' }), {
+    target: { value: '0.18' },
+  })
+
+  const saved = onBillingExprChange.mock.lastCall?.[0]
+  for (const [size, matchedTier, cost] of [
+    ['2880x2880', '2K', 360000],
+    ['1024x1024', 'standard', 240000],
+  ] as const) {
+    expect(
+      evaluateBillingExpression(saved, {
+        imageCount: 2,
+        request: { body: { size } },
+      })
+    ).toMatchObject({ status: 'success', matchedTier, cost })
+  }
+})
+
+test('keeps the last valid price when fixed tiers mix image and request units', async () => {
+  const user = userEvent.setup()
+  const onBillingExprChange = vi.fn()
+  render(
+    <TieredPricingEditor
+      billingExpr='param("size") == "2880x2880" ? tier("2K", fixed(0.12)) : tier("default", fixed(0.08))'
+      requestRuleExpr=''
+      onBillingExprChange={onBillingExprChange}
+      onRequestRuleExprChange={vi.fn()}
+    />
+  )
+  const tier = within(screen.getByRole('group', { name: 'Pricing tier 2K' }))
+  await user.click(tier.getByRole('combobox', { name: 'Tier billing mode' }))
+  await user.click(screen.getByRole('option', { name: 'Per image' }))
+
+  expect(onBillingExprChange).not.toHaveBeenCalled()
+  expect(
+    screen.getByText(
+      'Per-image and per-request prices cannot be combined in this editor.'
+    )
+  ).toBeVisible()
+})
+
+test.each([
+  'param("size") == "2880x2880" ? tier("2K", fixed(0.12)) * image_count : tier("default", fixed(0.08)) * image_count',
+  '(param("size") == "2880x2880" ? tier("2K", fixed(0.12)) : tier("default", fixed(0.08))) * image_count',
+  'image_count * (param("size") == "2880x2880" ? tier("2K", fixed(0.12)) : tier("default", fixed(0.08)))',
+])(
+  'opens existing image tiers and preserves their expression layout: %s',
+  (source) => {
+    const onBillingExprChange = vi.fn()
+    render(
+      <TieredPricingEditor
+        billingExpr={source}
+        requestRuleExpr=''
+        onBillingExprChange={onBillingExprChange}
+        onRequestRuleExprChange={vi.fn()}
+      />
+    )
+    expect(
+      screen.getByRole('combobox', { name: 'Editor mode' })
+    ).toHaveTextContent('Visual editor')
+    expect(
+      screen.getByRole('textbox', { name: 'Condition value' })
+    ).toHaveValue('2880x2880')
+    expect(onBillingExprChange).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Price per image' }), {
+      target: { value: '0.15' },
+    })
+    expect(onBillingExprChange).toHaveBeenLastCalledWith(
+      source.replace('0.12', '0.15')
+    )
+  }
+)
+
 test.each([
   ['zhCN', '星期一'],
   ['zhTW', '星期一'],

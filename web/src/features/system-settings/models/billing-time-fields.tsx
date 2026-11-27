@@ -46,18 +46,21 @@ const PROBE_LABELS = {
   p: 'Billable input tokens',
   c: 'Billable output tokens',
   len: 'Full input length',
+  size: 'Image size',
 } as const
 
 export function BillingTimeProbeFields(props: {
   probe: VisualComparison['probe']
   timezone: string
   includeTokens?: boolean
+  includeImageSize?: boolean
   invalidTimezone?: boolean
   onChange: (probe: VisualComparison['probe'], timezone: string) => void
 }) {
   const { t } = useTranslation()
   const probes: VisualComparison['probe'][] = [...TIME_FUNCS]
   if (props.includeTokens) probes.push('len', 'p', 'c')
+  if (props.includeImageSize) probes.push('size')
   const isTime = (TIME_FUNCS as readonly string[]).includes(props.probe)
   const zones = COMMON_TIMEZONES.map((zone) => ({
     value: zone.value,
@@ -122,6 +125,18 @@ export function BillingConditionValueInput(props: {
   probe?: VisualComparison['probe']
 }) {
   const { t, i18n } = useTranslation()
+  if (props.probe === 'size') {
+    return (
+      <Input
+        aria-label={props.label ?? t('Condition value')}
+        aria-invalid={props.invalid || undefined}
+        placeholder='1024x1024'
+        value={props.value}
+        onChange={(event) => props.onChange(event.target.value)}
+        className='w-32 max-w-full'
+      />
+    )
+  }
   if (
     props.probe === 'weekday' &&
     !props.normalizeNumberDrafts &&

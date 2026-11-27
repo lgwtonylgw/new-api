@@ -181,6 +181,34 @@ export function parseLogOther(other: string): LogOtherData | null {
   }
 }
 
+export function getBilledImageUsage(other: LogOtherData | null) {
+  if (!other || other.billing_unit === 'token') return null
+
+  let count = other.image_count
+  // Older fixed-price image logs stored the quantity in structured content.
+  if (
+    count == null &&
+    other.billing_mode !== 'tiered_expr' &&
+    typeof other.model_price === 'number' &&
+    other.model_price >= 0 &&
+    Array.isArray(other.content_parts)
+  ) {
+    const part = other.content_parts.find(
+      (entry) => entry?.key === 'Image count {{count}}'
+    )
+    const recordedCount = part?.params?.count
+    if (typeof recordedCount === 'number') count = recordedCount
+  }
+  if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
+    return null
+  }
+
+  return {
+    count,
+    tier: typeof other.matched_tier === 'string' ? other.matched_tier.trim() : '',
+  }
+}
+
 export function getReasoningEffortVariant(
   effort: string | undefined
 ): StatusBadgeProps['variant'] {

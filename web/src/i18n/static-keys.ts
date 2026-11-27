@@ -129,6 +129,7 @@ export const STATIC_I18N_KEYS = [
   'Choose a valid IANA timezone.',
   'Enter a finite, non-negative price.',
   'Enter a valid condition value.',
+  'Per-image and per-request prices cannot be combined in this editor.',
   'Include at least one price variable.',
   'Request simulation',
   'Simulated request body',

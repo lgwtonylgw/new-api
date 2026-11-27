@@ -35,7 +35,10 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { PricingCurrency } from '@/features/model-pricing/currency'
 import { PricingAmountInput } from '@/features/model-pricing/pricing-amount-input'
 import { BILLING_EXTRA_VARS } from '@/features/pricing/lib/billing-expr'
-import type { VisualPrice } from '@/features/pricing/lib/billing-expression/visual'
+import type {
+  VisualBillingUnit,
+  VisualPrice,
+} from '@/features/pricing/lib/billing-expression/visual'
 import {
   CACHE_MODE_GENERIC,
   CACHE_MODE_TIMED,
@@ -110,9 +113,9 @@ function PriceField({
 }
 
 type TierPriceFieldsProps = {
-  billingUnit?: 'token' | 'request'
+  billingUnit?: VisualBillingUnit
   fixedPrice?: string
-  onBillingUnitChange?: (unit: 'token' | 'request') => void
+  onBillingUnitChange?: (unit: VisualBillingUnit) => void
   onFixedPriceChange?: (value: string) => void
   currency: PricingCurrency
   prices: Partial<Record<VisualPrice['variable'], number | string>>
@@ -167,10 +170,11 @@ export function TierPriceFields(props: TierPriceFieldsProps) {
       items={[
         { value: 'token', label: t('Per token') },
         { value: 'request', label: t('Per-call') },
+        { value: 'image', label: t('Per image') },
       ]}
       value={props.billingUnit ?? 'token'}
       onValueChange={(value) => {
-        if (value === 'token' || value === 'request') {
+        if (value === 'token' || value === 'request' || value === 'image') {
           props.onBillingUnitChange?.(value)
         }
       }}
@@ -186,20 +190,22 @@ export function TierPriceFields(props: TierPriceFieldsProps) {
         <SelectGroup>
           <SelectItem value='token'>{t('Per token')}</SelectItem>
           <SelectItem value='request'>{t('Per-call')}</SelectItem>
+          <SelectItem value='image'>{t('Per image')}</SelectItem>
         </SelectGroup>
       </SelectContent>
     </Select>
   )
-  if (props.billingUnit === 'request') {
+  if (props.billingUnit === 'request' || props.billingUnit === 'image') {
+    const perImage = props.billingUnit === 'image'
     return (
       <>
         {billingControl}
         <PriceField
           currency={props.currency}
-          label={t('Price per request')}
+          label={perImage ? t('Price per image') : t('Price per request')}
           value={props.fixedPrice ?? ''}
           onChange={(value) => props.onFixedPriceChange?.(value)}
-          hint={`${props.currency.symbol}/${t('request')}`}
+          hint={`${props.currency.symbol}/${perImage ? t('image') : t('request')}`}
           invalid={props.invalidVariables?.includes('fixed')}
         />
       </>

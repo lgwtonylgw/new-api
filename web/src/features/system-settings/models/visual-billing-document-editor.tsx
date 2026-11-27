@@ -89,7 +89,9 @@ function PricingTierFields(
             props.onChange({
               id: visualNodeId(),
               kind: 'branch',
-              condition: createEmptyVisualCondition(),
+              condition: createEmptyVisualCondition(
+                node.billingUnit === 'image' ? 'size' : 'hour'
+              ),
               yes: {
                 ...node,
                 id: visualNodeId(),
@@ -184,6 +186,14 @@ function PricingRuleCard(
   const description =
     condition && formatBillingCondition(condition, t, i18n.language)
   let matchDescription = description || t('Tier conditions')
+  if (
+    node.kind === 'branch' &&
+    node.condition.kind === 'comparison' &&
+    node.condition.probe === 'size' &&
+    node.condition.value
+  ) {
+    matchDescription = `${t('Image size')} ${node.condition.operator} ${node.condition.value}`
+  }
   if (node.kind === 'tier') {
     matchDescription = props.fallback
       ? t('No preceding rule matched')
@@ -248,12 +258,15 @@ function PricingRuleCard(
             </span>
             {tier.kind === 'tier' && (
               <span className='flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums'>
-                {tier.billingUnit === 'request' ? (
+                {tier.billingUnit !== 'token' ? (
                   <span>
-                    {t('Price per request')}:{' '}
+                    {tier.billingUnit === 'image'
+                      ? t('Price per image')
+                      : t('Price per request')}
+                    :{' '}
                     {formatPricingAmount(tier.fixedPrice, props.currency) ||
                       '—'}
-                    /{t('request')}
+                    /{tier.billingUnit === 'image' ? t('image') : t('request')}
                   </span>
                 ) : (
                   <>

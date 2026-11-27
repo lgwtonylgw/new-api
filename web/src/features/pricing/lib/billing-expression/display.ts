@@ -101,7 +101,7 @@ function imageSizeCondition(node: ExpressionNode): string | null {
   return sizes.join(' / ')
 }
 
-function unwrapImageCount(node: ExpressionNode): ExpressionNode | null {
+export function unwrapImageCount(node: ExpressionNode): ExpressionNode | null {
   if (node.kind !== 'binary' || node.operator !== '*') return null
   if (node.left.kind === 'variable' && node.left.name === 'image_count') {
     return node.right

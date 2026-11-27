@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { flattenBinary } from './display'
+import { flattenBinary, unwrapImageCount } from './display'
 import { compileBillingExpression } from './parser'
 import {
   TIME_FUNCTIONS,
@@ -28,7 +28,7 @@ import {
 type Origin = { id: string; origin?: ExpressionNode }
 export type VisualComparison = Origin & {
   kind: 'comparison'
-  probe: 'p' | 'c' | 'len' | TimeFunction
+  probe: 'p' | 'c' | 'len' | 'size' | TimeFunction
   timezone: string
   operator: '<' | '<=' | '>' | '>=' | '==' | '!='
   value: string
@@ -43,12 +43,13 @@ export type VisualPrice = {
   value: string
   origin?: ExpressionNode
 }
+export type VisualBillingUnit = 'token' | 'request' | 'image'
 export type VisualPricingNode =
   | (Origin & {
       kind: 'tier'
       label: string
       prices: VisualPrice[]
-      billingUnit: 'token' | 'request'
+      billingUnit: VisualBillingUnit
       fixedPrice: string
     })
   | (Origin & {
@@ -76,13 +77,15 @@ export function visualNodeId(): string {
   return `draft-${++nextId}`
 }
 
-export function createEmptyVisualCondition(): VisualComparison {
+export function createEmptyVisualCondition(
+  probe: 'hour' | 'size' = 'hour'
+): VisualComparison {
   return {
     id: visualNodeId(),
     kind: 'comparison',
-    probe: 'hour',
+    probe,
     timezone: 'Asia/Shanghai',
-    operator: '>=',
+    operator: probe === 'size' ? '==' : '>=',
     value: '',
   }
 }
@@ -105,11 +108,29 @@ function readVisualCondition(node: ExpressionNode): VisualCondition | null {
   if (
     node.kind !== 'binary' ||
     !COMPARISONS.has(node.operator) ||
-    node.right.kind !== 'literal' ||
-    typeof node.right.value !== 'number'
+    node.right.kind !== 'literal'
   ) {
     return null
   }
+  const probeCall = node.left
+  if (
+    probeCall.kind === 'call' &&
+    probeCall.name === 'param' &&
+    probeCall.args[0]?.kind === 'literal' &&
+    probeCall.args[0].value === 'size' &&
+    (node.operator === '==' || node.operator === '!=') &&
+    typeof node.right.value === 'string'
+  ) {
+    return {
+      ...identity,
+      kind: 'comparison',
+      probe: 'size',
+      timezone: '',
+      operator: node.operator,
+      value: node.right.value,
+    }
+  }
+  if (typeof node.right.value !== 'number') return null
   let probe: VisualComparison['probe']
   let timezone = ''
   if (
@@ -136,12 +157,21 @@ function readVisualCondition(node: ExpressionNode): VisualCondition | null {
   }
 }
 
-function readVisualPricing(node: ExpressionNode): VisualPricingNode | null {
+function readVisualPricing(
+  node: ExpressionNode,
+  perImage = false
+): VisualPricingNode | null {
   const identity = { id: `pricing-${node.start}-${node.end}`, origin: node }
+  const imagePricing = unwrapImageCount(node)
+  if (imagePricing) {
+    if (perImage) return null
+    const pricing = readVisualPricing(imagePricing, true)
+    return pricing && { ...pricing, ...identity }
+  }
   if (node.kind === 'conditional') {
     const condition = readVisualCondition(node.condition)
-    const yes = readVisualPricing(node.yes)
-    const no = readVisualPricing(node.no)
+    const yes = readVisualPricing(node.yes, perImage)
+    const no = readVisualPricing(node.no, perImage)
     return condition && yes && no
       ? { ...identity, kind: 'branch', condition, yes, no }
       : null
@@ -166,10 +196,11 @@ function readVisualPricing(node: ExpressionNode): VisualPricingNode | null {
       kind: 'tier',
       label: node.args[0].value,
       prices,
-      billingUnit: 'request',
+      billingUnit: perImage ? 'image' : 'request',
       fixedPrice: String(body.args[0].value),
     }
   }
+  if (perImage) return null
   for (const term of flattenBinary(node.args[1], '+')) {
     if (
       term.kind !== 'binary' ||
@@ -281,8 +312,15 @@ function writeVisualCondition(
     }
     return `(${children.map((child) => `(${child})`).join(` ${operator} `)})`
   }
-  const value = parseNonNegativeNumber(node.value)
+  const isImageSize = node.probe === 'size'
+  const value = isImageSize ? node.value : parseNonNegativeNumber(node.value)
+  const valueText = isImageSize ? JSON.stringify(node.value) : node.value
   let valid = value !== null
+  if (isImageSize) {
+    valid =
+      node.value.trim().length > 0 &&
+      (node.operator === '==' || node.operator === '!=')
+  }
   if ((TIME_FUNCTIONS as readonly string[]).includes(node.probe)) {
     const [min, max] = TIME_DOMAINS[node.probe as TimeFunction]
     valid =
@@ -313,9 +351,12 @@ function writeVisualCondition(
       }
     }
   }
-  const probe = isTime
-    ? `${node.probe}(${JSON.stringify(node.timezone)})`
-    : node.probe
+  let probe: string = node.probe
+  if (isImageSize) {
+    probe = 'param("size")'
+  } else if (isTime) {
+    probe = `${node.probe}(${JSON.stringify(node.timezone)})`
+  }
   const origin = node.origin
   if (origin?.kind === 'binary' && origin.operator === node.operator) {
     const oldProbe = origin.left
@@ -325,22 +366,26 @@ function writeVisualCondition(
     }
     if (
       oldProbe.kind === 'call' &&
-      oldProbe.name === node.probe &&
-      oldProbe.args[0].kind === 'literal' &&
-      oldProbe.args[0].value === node.timezone
+      oldProbe.args[0]?.kind === 'literal' &&
+      ((isTime &&
+        oldProbe.name === node.probe &&
+        oldProbe.args[0].value === node.timezone) ||
+        (isImageSize &&
+          oldProbe.name === 'param' &&
+          oldProbe.args[0].value === 'size'))
     ) {
       probeText = source.slice(oldProbe.start, oldProbe.end)
     }
-    const valueText =
+    const originalValue =
       origin.right.kind === 'literal' && value === origin.right.value
         ? source.slice(origin.right.start, origin.right.end)
-        : node.value
+        : valueText
     return patchSource(source, origin, [
       { node: origin.left, text: probeText },
-      { node: origin.right, text: valueText },
+      { node: origin.right, text: originalValue },
     ])
   }
-  return `(${probe} ${node.operator} ${node.value})`
+  return `(${probe} ${node.operator} ${valueText})`
 }
 
 export function visualConditionExpression(
@@ -352,15 +397,37 @@ export function visualConditionExpression(
   return issues.length === 0 ? expression : null
 }
 
+function pricingTiers(
+  node: VisualPricingNode
+): Extract<VisualPricingNode, { kind: 'tier' }>[] {
+  if (node.kind === 'tier') return [node]
+  return [...pricingTiers(node.yes), ...pricingTiers(node.no)]
+}
+
 function writeVisualPricing(
   node: VisualPricingNode,
   source: string,
-  issues: VisualBillingIssue[]
+  issues: VisualBillingIssue[],
+  perImage = false
 ): string {
+  const origin = node.origin
+  const imagePricing = origin && unwrapImageCount(origin)
+  if (origin && imagePricing) {
+    const pricing = { ...node, origin: imagePricing }
+    if (pricingTiers(node).every((tier) => tier.billingUnit === 'image')) {
+      return patchSource(source, origin, [
+        {
+          node: imagePricing,
+          text: writeVisualPricing(pricing, source, issues, true),
+        },
+      ])
+    }
+    return writeVisualPricing(pricing, source, issues, perImage)
+  }
   if (node.kind === 'branch') {
     const condition = writeVisualCondition(node.condition, source, issues)
-    const yes = writeVisualPricing(node.yes, source, issues)
-    const no = writeVisualPricing(node.no, source, issues)
+    const yes = writeVisualPricing(node.yes, source, issues, perImage)
+    const no = writeVisualPricing(node.no, source, issues, perImage)
     if (node.origin?.kind === 'conditional') {
       return patchSource(source, node.origin, [
         { node: node.origin.condition, text: condition },
@@ -370,7 +437,7 @@ function writeVisualPricing(
     }
     return `(${condition}) ? (${yes}) : (${no})`
   }
-  if (node.billingUnit === 'request') {
+  if (node.billingUnit !== 'token') {
     const value = parseNonNegativeNumber(node.fixedPrice)
     if (value === null || !Number.isFinite(value * 1_000_000)) {
       issues.push({
@@ -378,7 +445,8 @@ function writeVisualPricing(
         message: 'Enter a finite, non-negative price.',
       })
     }
-    const origin = node.origin
+    const multiplier =
+      node.billingUnit === 'image' && !perImage ? ' * image_count' : ''
     if (origin?.kind === 'call' && origin.name === 'tier') {
       const label = origin.args[0]
       const labelText =
@@ -399,12 +467,14 @@ function writeVisualPricing(
             : node.fixedPrice
         priceText = patchSource(source, price, [{ node: amount, text }])
       }
-      return patchSource(source, origin, [
-        { node: label, text: labelText },
-        { node: price, text: priceText },
-      ])
+      return (
+        patchSource(source, origin, [
+          { node: label, text: labelText },
+          { node: price, text: priceText },
+        ]) + multiplier
+      )
     }
-    return `tier(${JSON.stringify(node.label)}, fixed(${node.fixedPrice}))`
+    return `tier(${JSON.stringify(node.label)}, fixed(${node.fixedPrice}))${multiplier}`
   }
   if (node.prices.length === 0) {
     issues.push({
@@ -436,7 +506,6 @@ function writeVisualPricing(
       )
     } else terms.push(`${price.variable} * ${price.value}`)
   }
-  const origin = node.origin
   if (origin?.kind === 'call' && origin.name === 'tier') {
     const label = origin.args[0]
     const labelText =
@@ -465,6 +534,20 @@ export function serializeVisualBillingDocument(
   document: VisualBillingDocument
 ): VisualBillingSerialization {
   const issues: VisualBillingIssue[] = []
+  const tiers = pricingTiers(document.root)
+  // The gateway selects the image group ratio from the expression's reference
+  // to image_count, including references in branches that did not run.
+  if (tiers.some((tier) => tier.billingUnit === 'image')) {
+    for (const tier of tiers) {
+      if (tier.billingUnit === 'request') {
+        issues.push({
+          id: `${tier.id}:fixed`,
+          message:
+            'Per-image and per-request prices cannot be combined in this editor.',
+        })
+      }
+    }
+  }
   const body = writeVisualPricing(document.root, document.source, issues)
   if (issues.length > 0) return { ok: false, issues }
   const original = compileBillingExpression(document.source)
