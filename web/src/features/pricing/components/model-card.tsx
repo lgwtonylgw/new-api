@@ -34,6 +34,7 @@ import {
   getDynamicGroupRatios,
   getDynamicPriceUnitLabelKey,
   getDynamicPricingSummary,
+  getVideoSpecPrices,
   isUnconfiguredTaskUsageModel,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
@@ -70,7 +71,10 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const modelIcon = modelIconKey ? getLobeIcon(modelIconKey, 28) : null
   const initial = props.model.model_name?.charAt(0).toUpperCase() || '?'
   const isUnconfiguredTaskUsage = isUnconfiguredTaskUsageModel(props.model)
-  const billingTime = useBillingTime(props.model.billing_expr)
+  const billingTime = useBillingTime(
+    props.model.billing_plugin_variants?.find((variant) => variant.billing_expr)
+      ?.billing_expr ?? props.model.billing_expr
+  )
   const currency = useSystemConfigStore((state) => state.config.currency)
   const dynamicPriceOptions = useMemo(
     () => ({
@@ -97,8 +101,13 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [props.model, dynamicPriceOptions, currency]
   )
-  const cardExamplePrice = useMemo(
-    () => getCardExamplePrice(props.model, dynamicPriceOptions),
+  const examplePrices = useMemo(
+    () => {
+      const videoSpecs = getVideoSpecPrices(props.model, dynamicPriceOptions)
+      if (videoSpecs.length) return videoSpecs
+      const example = getCardExamplePrice(props.model, dynamicPriceOptions)
+      return example ? [example] : []
+    },
     // Currency is read indirectly by the price formatter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [props.model, dynamicPriceOptions, currency]
@@ -116,7 +125,10 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           </code>
         </div>
       )
-    } else if (dynamicSummary.primaryEntries.length > 0) {
+    } else if (
+      dynamicSummary.primaryEntries.length > 0 ||
+      examplePrices.length > 0
+    ) {
       priceSummary = (
         <>
           {dynamicSummary.primaryEntries
@@ -171,11 +183,14 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               {t('Token or per-call pricing')}
             </span>
           )}
-          {cardExamplePrice && (
-            <span className='text-muted-foreground col-span-full text-xs break-words'>
-              {cardExamplePrice.label} ≈ {cardExamplePrice.formatted}
+          {examplePrices.map((example) => (
+            <span
+              key={example.label}
+              className='text-muted-foreground col-span-full text-xs break-words'
+            >
+              {example.label} ≈ {example.formatted}
             </span>
-          )}
+          ))}
           {dynamicSummary.isTaskUsage &&
             dynamicSummary.tier?.label &&
             !dynamicSummary.primaryEntries.some(

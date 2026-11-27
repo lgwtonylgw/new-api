@@ -212,6 +212,37 @@ export function getImageLogUsage(other: LogOtherData | null) {
   }
 }
 
+export function getMediaLogUsage(type: number, other: LogOtherData | null) {
+  if (!other || (type !== 2 && type !== 6)) return null
+  if (type === 2) {
+    const image = getImageLogUsage(other)
+    if (image) return image
+  }
+
+  const settled =
+    Boolean(other.task_id) &&
+    typeof other.actual_quota === 'number' &&
+    Number.isFinite(other.actual_quota) &&
+    other.actual_quota >= 0
+  if (!settled && (type !== 2 || !other.is_task)) return null
+  const seconds = other.usage_facts?.seconds
+  const resolution = other.usage_facts?.resolution
+  if (
+    typeof seconds !== 'number' ||
+    !Number.isFinite(seconds) ||
+    seconds <= 0 ||
+    typeof resolution !== 'string' ||
+    !resolution.trim()
+  ) {
+    return null
+  }
+  return {
+    seconds,
+    resolution: resolution.trim(),
+    preConsumed: !settled && other.task_sync !== true,
+  }
+}
+
 export function getReasoningEffortVariant(
   effort: string | undefined
 ): StatusBadgeProps['variant'] {

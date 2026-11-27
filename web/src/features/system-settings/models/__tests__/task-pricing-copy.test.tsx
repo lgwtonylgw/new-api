@@ -22,6 +22,8 @@ import i18next from 'i18next'
 import { useState } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 
+import { evaluateBillingExpression } from '@/features/pricing/lib/billing-expression/runtime'
+
 import { TaskUsagePricingEditor } from '../task-usage-pricing-editor'
 
 function renderPricing(unitLabel?: Record<string, string>) {
@@ -56,6 +58,56 @@ function renderPricing(unitLabel?: Record<string, string>) {
 afterEach(async () => {
   await act(() => i18next.changeLanguage('en'))
 })
+
+it.each([
+  ['', true],
+  [
+    'u("resolution") == "768P" ? tier("768P", 0.3 + u("seconds") * 0) : tier("2K", u("seconds") * 0.1)',
+    false,
+  ],
+] as const)(
+  'only applies the video preset to a new price (%s)',
+  async (billingExpr, canApply) => {
+    const onBillingExprChange = vi.fn()
+    const onRequestRuleExprChange = vi.fn()
+    render(
+      <TaskUsagePricingEditor
+        billingExpr={billingExpr}
+        requestRuleExpr='(param("priority") == true ? 2 : 1)'
+        usageSchema={{
+          seconds: { type: 'number', unit: 'second' },
+          resolution: { enum: ['768P', '2K'] },
+        }}
+        onBillingExprChange={onBillingExprChange}
+        onRequestRuleExprChange={onRequestRuleExprChange}
+      />
+    )
+    const preset = screen.getByRole('button', {
+      name: 'Video resolution tiers',
+    })
+    if (!canApply) {
+      expect(preset).toBeDisabled()
+      expect(onBillingExprChange).not.toHaveBeenCalled()
+      return
+    }
+
+    await userEvent.setup().click(preset)
+
+    expect(preset).toBeDisabled()
+    expect(onRequestRuleExprChange).not.toHaveBeenCalled()
+    const expression = onBillingExprChange.mock.lastCall?.[0]
+    expect(
+      evaluateBillingExpression(expression, {
+        usage: { seconds: 5, resolution: '768P' },
+      })
+    ).toMatchObject({ status: 'success', cost: 0.25 })
+    expect(
+      evaluateBillingExpression(expression, {
+        usage: { seconds: 10, resolution: '2K' },
+      })
+    ).toMatchObject({ status: 'success', cost: 0.5 })
+  }
+)
 
 it('shows localized schema explanations in the price table and calculator', async () => {
   renderPricing()

@@ -28,6 +28,7 @@ import {
   getDynamicGroupRatios,
   getDynamicPriceUnitLabelKey,
   getDynamicPricingSummary,
+  getVideoSpecPrices,
   isUnconfiguredTaskUsageModel,
 } from '../lib/dynamic-price'
 import { isTokenBasedModel, supportsImagePricing } from '../lib/model-helpers'
@@ -55,10 +56,13 @@ export function ModelPriceCell(props: {
   const options = props.options ?? {}
   const tokenUnit = options.tokenUnit ?? DEFAULT_TOKEN_UNIT
   const tokenUnitLabel = tokenUnit === 'K' ? '1K' : '1M'
-  const billingTime = useBillingTime(props.model.billing_expr)
-  const dynamic = useMemo(
-    () =>
-      getDynamicPricingSummary(props.model, {
+  const billingTime = useBillingTime(
+    props.model.billing_plugin_variants?.find((variant) => variant.billing_expr)
+      ?.billing_expr ?? props.model.billing_expr
+  )
+  const { dynamic, videoSpecs } = useMemo(
+    () => {
+      const priceOptions = {
         priceRate: options.priceRate,
         usdExchangeRate: options.usdExchangeRate,
         showRechargePrice: options.showRechargePrice,
@@ -66,7 +70,15 @@ export function ModelPriceCell(props: {
         tokenUnit,
         showCurrencySymbol: false,
         ...getDynamicGroupRatios(props.model, options.selectedGroup),
-      }),
+      }
+      return {
+        dynamic: getDynamicPricingSummary(props.model, priceOptions),
+        videoSpecs: getVideoSpecPrices(props.model, {
+          ...priceOptions,
+          showCurrencySymbol: true,
+        }),
+      }
+    },
     // Currency is read indirectly by the price formatter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -138,7 +150,7 @@ export function ModelPriceCell(props: {
           value: `${entry.formattedRange ?? entry.formatted}${suffix}`,
         }
       })
-    if (metrics.length === 0) {
+    if (metrics.length === 0 && videoSpecs.length === 0) {
       return (
         <span className='text-muted-foreground text-sm'>
           {dynamic.hasUnconfiguredProviders
@@ -257,6 +269,14 @@ export function ModelPriceCell(props: {
           </span>
         ))}
       </span>
+      {videoSpecs.map((example) => (
+        <span
+          key={example.label}
+          className='text-muted-foreground block text-xs'
+        >
+          {example.label} ≈ {example.formatted}
+        </span>
+      ))}
       <span
         className='text-muted-foreground block text-xs font-normal break-words whitespace-normal sm:truncate'
         title={caption}

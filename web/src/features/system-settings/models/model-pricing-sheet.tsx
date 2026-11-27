@@ -343,11 +343,12 @@ export const ModelPricingEditorPanel = forwardRef<
         : '',
     [taskUsageSchema]
   )
-  const resolvedBillingExpr =
-    taskUsageSchema &&
+  const usesDefaultTaskBillingExpr =
+    taskUsageSchema != null &&
     (!billingExpr || billingExpr === DEFAULT_TOKEN_BILLING_EXPR)
-      ? defaultTaskBillingExpr
-      : billingExpr
+  const resolvedBillingExpr = usesDefaultTaskBillingExpr
+    ? defaultTaskBillingExpr
+    : billingExpr
 
   useEffect(() => {
     conversionGeneration.current += 1
@@ -545,7 +546,7 @@ export const ModelPricingEditorPanel = forwardRef<
     const nextMode = value as PricingMode
     setPricingMode(nextMode)
     if (nextMode === 'tiered_expr' && !billingExpr) {
-      setBillingExpr(defaultTaskBillingExpr || DEFAULT_TOKEN_BILLING_EXPR)
+      setBillingExpr(DEFAULT_TOKEN_BILLING_EXPR)
     }
   }
 
@@ -812,7 +813,7 @@ export const ModelPricingEditorPanel = forwardRef<
     <TaskUsagePricingEditor
       currency={currency}
       key={`${editorReloadToken}:${watchedValues.name}`}
-      billingExpr={resolvedBillingExpr}
+      billingExpr={usesDefaultTaskBillingExpr ? '' : resolvedBillingExpr}
       requestRuleExpr={requestRuleExpr}
       usageSchema={taskUsageSchema}
       usageExamples={taskUsageExamples}

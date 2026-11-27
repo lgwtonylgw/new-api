@@ -1053,6 +1053,7 @@ function ProviderGroupPricingSection(
 ) {
   const { t, i18n } = useTranslation()
   const showRechargePrice = props.showRechargePrice ?? false
+  const billingTime = useBillingTime(props.model.billing_expr)
 
   const availableGroups = useMemo(
     () => getAvailableGroups(props.model, props.usableGroup || {}),
@@ -1152,7 +1153,8 @@ function ProviderGroupPricingSection(
     const usageExampleRows = evaluateTaskUsageExamples(
       props.model.billing_expr,
       props.model.billing_usage_schema,
-      props.model.billing_usage_examples
+      props.model.billing_usage_examples,
+      billingTime === undefined ? undefined : new Date(billingTime)
     )
     const priceFields = getDynamicPriceFields(dynamicTiers, {
       tokenUnit: props.tokenUnit,

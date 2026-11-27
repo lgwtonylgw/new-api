@@ -31,6 +31,7 @@ import {
   getDynamicPricingSummary,
   getDynamicPricingTiers,
   getTaskUsagePriceUnitLabelKey,
+  getVideoSpecPrices,
   hasTaskUsageSchema,
   isUnconfiguredTaskUsageModel,
 } from '../lib/dynamic-price'
@@ -624,6 +625,34 @@ describe('task dynamic pricing', () => {
     assert.ok(example)
     assert.equal(example.label, '720p · 5s')
     assert.match(example.formatted, /1[.,]0584/)
+  })
+
+  test('uses time rules for video quotes and skips quotes that require request data', () => {
+    const base = 'tier("768P", u("seconds") * 0.075)'
+    const model = pricingModel({
+      billing_mode: 'tiered_expr',
+      billing_expr: `(${base}) * (hour("UTC") >= 18 ? 2 : 1)`,
+      billing_usage_schema: {
+        seconds: { type: 'number', unit: 'second' },
+        resolution: { enum: ['768P'] },
+      },
+      billing_usage_examples: [
+        { label: '5s / 768P', facts: { seconds: 5, resolution: '768P' } },
+      ],
+    })
+    const options = {
+      tokenUnit: 'M' as const,
+      now: new Date('2026-11-27T20:00:00Z'),
+    }
+    expect(getVideoSpecPrices(model, options)).toEqual([
+      { label: '5s / 768P', formatted: '$0.75' },
+    ])
+    const conditional = {
+      ...model,
+      billing_expr: `(${base}) * (param("priority") == true ? 2 : 1)`,
+    }
+    expect(getVideoSpecPrices(conditional, options)).toEqual([])
+    expect(getCardExamplePrice(conditional, options)).toBeNull()
   })
 
   test('returns null when the expression is not canonical or examples are missing', () => {

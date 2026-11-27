@@ -25,6 +25,7 @@ import {
   parseTaskTiersFromExpr,
   splitBillingExprAndRequestRules,
 } from './billing-expr'
+import { compileBillingExpression } from './billing-expression/parser'
 import { evaluateBillingExpression } from './billing-expression/runtime'
 
 export const TASK_TOKEN_PRICE_SCALE = 1_000_000
@@ -289,9 +290,18 @@ export function evaluateTaskVisualConfig(
 export function evaluateTaskUsageExamples(
   expression: string | null | undefined,
   schema: BillingUsageSchema | null | undefined,
-  examples: BillingUsageExample[] | null | undefined
+  examples: BillingUsageExample[] | null | undefined,
+  now?: Date
 ): { label: string; total: number }[] {
   if (!expression || !schema || !examples?.length) return []
+  if (schema.seconds?.unit === 'second' && schema.resolution?.enum?.length) {
+    const compiled = compileBillingExpression(expression)
+    if (compiled.status !== 'ready') return []
+    return examples.flatMap(({ label, facts }) => {
+      const result = evaluateBillingExpression(compiled, { usage: facts, now })
+      return result.status === 'success' ? [{ label, total: result.cost }] : []
+    })
+  }
   const { billingExpr } = splitBillingExprAndRequestRules(expression)
   const config = tryParseTaskVisualConfig(billingExpr, schema)
   if (!config) return []

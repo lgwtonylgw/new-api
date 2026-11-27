@@ -271,6 +271,7 @@ export interface LogOtherData {
   // The inline result was not persisted, so no artifact can be retrieved.
   result_discarded?: boolean
   task_id?: string
+  actual_quota?: number
   reason?: string
   // Subscription billing fields
   subscription_plan_id?: string

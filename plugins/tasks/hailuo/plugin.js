@@ -62,7 +62,7 @@ export const meta = {
     en: "MiniMax Hailuo video generation (text-to-video, image-to-video, and MiniMax-H3 multimodal reference)",
     zh: "MiniMax 海螺视频生成（文生视频、图生视频、MiniMax-H3 多模态参考生视频）",
   },
-  version: "1.2.1",
+  version: "1.2.2",
   author: { name: "QuantumNous" },
   channelTypes: [35],
   models: [
@@ -102,8 +102,12 @@ export const meta = {
       models: ["MiniMax-H3"],
       schema: H3_USAGE_SCHEMA,
       examples: [
-        { label: "H3 768P 5s", facts: { seconds: 5, resolution: "768P", input_images: 0, input_video_seconds: 0 } },
-        { label: "H3 2K 5s", facts: { seconds: 5, resolution: "2K", input_images: 0, input_video_seconds: 0 } },
+        { label: "5s / 768P", facts: { seconds: 5, resolution: "768P", input_images: 0, input_video_seconds: 0 } },
+        { label: "10s / 768P", facts: { seconds: 10, resolution: "768P", input_images: 0, input_video_seconds: 0 } },
+        { label: "15s / 768P", facts: { seconds: 15, resolution: "768P", input_images: 0, input_video_seconds: 0 } },
+        { label: "5s / 2K", facts: { seconds: 5, resolution: "2K", input_images: 0, input_video_seconds: 0 } },
+        { label: "10s / 2K", facts: { seconds: 10, resolution: "2K", input_images: 0, input_video_seconds: 0 } },
+        { label: "15s / 2K", facts: { seconds: 15, resolution: "2K", input_images: 0, input_video_seconds: 0 } },
         { label: "H3 2K 5s · 9 images", facts: { seconds: 5, resolution: "2K", input_images: 9, input_video_seconds: 0 } },
         { label: "H3 2K 5s · input video", facts: { seconds: 5, resolution: "2K", input_images: 0, input_video_seconds: 15 } },
       ],

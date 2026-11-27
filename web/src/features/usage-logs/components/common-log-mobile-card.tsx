@@ -35,7 +35,7 @@ import type { UsageLog } from '../data/schema'
 import {
   formatModelName,
   getCacheWriteTokens,
-  getImageLogUsage,
+  getMediaLogUsage,
   logTokenName,
   parseLogOther,
 } from '../lib/format'
@@ -45,7 +45,7 @@ import {
   isTimingLogType,
 } from '../lib/utils'
 import { CacheHitRate } from './cache-hit-rate'
-import { ImageLogUsage } from './image-log-usage'
+import { MediaLogUsage } from './media-log-usage'
 import { ModelBadge, ResponseModelDetails } from './model-badge'
 import { StreamTpsCell, TimingMetricsCell } from './timing-metrics-cell'
 import { useUsageLogsContext } from './usage-logs-provider'
@@ -138,11 +138,10 @@ export function CommonLogMobileCard<TData>(props: {
   const cacheRead = other?.cache_tokens || 0
   const cacheWrite = getCacheWriteTokens(other)
   const showUsage = displayable && props.cells.has('prompt_tokens')
-  const imageUsage =
-    showUsage && log.type === 2 ? getImageLogUsage(other) : null
+  const mediaUsage = showUsage ? getMediaLogUsage(log.type, other) : null
   const showTokens =
     showUsage &&
-    !imageUsage &&
+    !mediaUsage &&
     (log.prompt_tokens > 0 ||
       log.completion_tokens > 0 ||
       cacheRead > 0 ||
@@ -295,7 +294,7 @@ export function CommonLogMobileCard<TData>(props: {
             )}
         </div>
       )}
-      {imageUsage && <ImageLogUsage {...imageUsage} />}
+      {mediaUsage && <MediaLogUsage {...mediaUsage} />}
       {showTokens && (
         <div className='text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 text-xs [overflow-wrap:anywhere]'>
           <span>

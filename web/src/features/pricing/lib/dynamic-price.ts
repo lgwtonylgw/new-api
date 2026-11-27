@@ -38,11 +38,7 @@ import {
 import { compileBillingExpression } from './billing-expression/parser'
 import { getDisplayGroupRatio } from './model-helpers'
 import { withPluginPricing } from './plugin-pricing'
-import {
-  evaluateTaskVisualConfig,
-  getTaskNumberFields,
-  tryParseTaskVisualConfig,
-} from './task-expr'
+import { evaluateTaskUsageExamples, getTaskNumberFields } from './task-expr'
 import { getTaskPricingDisplayTiers } from './task-matrix-display'
 
 export type DynamicPriceOptions = {
@@ -622,17 +618,49 @@ export function getCardExamplePrice(
   const firstExample = model.billing_usage_examples?.[0]
   if (!schema || !firstExample) return null
 
-  const { billingExpr } = splitBillingExprAndRequestRules(
-    model.billing_expr || ''
+  const [result] = evaluateTaskUsageExamples(
+    model.billing_expr,
+    schema,
+    [firstExample],
+    options.now
   )
-  const config = tryParseTaskVisualConfig(billingExpr, schema)
-  if (!config) return null
-
-  const result = evaluateTaskVisualConfig(config, firstExample.facts, schema)
   if (!result) return null
 
   return {
     label: firstExample.label,
     formatted: formatTaskUsageUnitPrice(result.total, options),
   }
+}
+
+export function getVideoSpecPrices(
+  model: PricingModel,
+  options: DynamicPriceOptions
+): CardExamplePrice[] {
+  const variants = model.billing_plugin_variants
+  // The detail page shows examples under each provider's own group prices.
+  if (variants?.length === 1) model = withPluginPricing(model, variants[0])
+  if ((variants?.length ?? 0) > 1 || !isTaskUsagePricingModel(model)) return []
+
+  const schema = model.billing_usage_schema
+  const examples = model.billing_usage_examples
+  if (schema?.seconds?.unit !== 'second' || !schema.resolution?.enum?.length) {
+    return []
+  }
+  const videoSpecs = examples?.filter(
+    ({ facts }) =>
+      typeof facts.seconds === 'number' &&
+      facts.seconds > 0 &&
+      typeof facts.resolution === 'string'
+  )
+  return evaluateTaskUsageExamples(
+    model.billing_expr,
+    schema,
+    videoSpecs,
+    options.now
+  )
+    .slice(0, 3)
+    .map(({ label, total }) => ({
+      label,
+      formatted: formatTaskUsageUnitPrice(total, options),
+    }))
 }

@@ -100,6 +100,41 @@ const model: PricingModel = {
 }
 const clients: QueryClient[] = []
 
+it('quotes video specifications from resolution rates and the selected group', () => {
+  const videoModel: PricingModel = {
+    ...model,
+    model_name: 'MiniMax-H3',
+    group_ratio: { default: 1.5 },
+    billing_expr:
+      'u("resolution") == "768P" ? tier("768P", u("seconds") * 0.05) : tier("2K", u("seconds") * 0.1)',
+    billing_usage_schema: {
+      seconds: { type: 'number', unit: 'second' },
+      resolution: { enum: ['768P', '2K'] },
+    },
+    billing_usage_examples: [5, 10, 15].map((seconds) => ({
+      label: `${seconds}s / 768P`,
+      facts: { seconds, resolution: '768P' },
+    })),
+  }
+  render(
+    <>
+      <ModelCard model={videoModel} selectedGroup='default' onClick={vi.fn()} />
+      <ModelPriceCell
+        model={videoModel}
+        options={{ selectedGroup: 'default' }}
+      />
+    </>
+  )
+
+  for (const quote of [
+    '5s / 768P ≈ $0.375',
+    '10s / 768P ≈ $0.75',
+    '15s / 768P ≈ $1.125',
+  ]) {
+    expect(screen.getAllByText(quote)).toHaveLength(2)
+  }
+})
+
 it('shows nested task conditions and prices in detail and group tables without ambiguous log matches', () => {
   vi.spyOn(api, 'get').mockResolvedValue({ data: { data: { groups: [] } } })
   const client = new QueryClient({

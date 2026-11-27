@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
@@ -420,6 +421,10 @@ export const TaskUsagePricingEditor = memo(function TaskUsagePricingEditor(
       row.constant === 0 &&
       numberFields.every(([field]) => !(row.unitPrices[field] > 0))
   )
+  const showVideoPreset =
+    editorMode === 'visual' &&
+    props.usageSchema.seconds?.unit === 'second' &&
+    Boolean(props.usageSchema.resolution?.enum?.length)
 
   return (
     <div className='space-y-5'>
@@ -478,6 +483,34 @@ export const TaskUsagePricingEditor = memo(function TaskUsagePricingEditor(
           )}
         </AlertDescription>
       </Alert>
+
+      {showVideoPreset && (
+        <div className='flex flex-wrap items-center gap-2'>
+          <span className='text-sm font-medium'>{t('Preset templates')}</span>
+          <Button
+            type='button'
+            size='sm'
+            variant='outline'
+            disabled={
+              Boolean(props.billingExpr.trim()) ||
+              matrixRows.some((row) => row.unitPrices.seconds > 0)
+            }
+            onClick={() =>
+              publishRows(
+                matrixRows.map((row) => ({
+                  ...row,
+                  unitPrices: {
+                    ...row.unitPrices,
+                    seconds: row.unitPrices.seconds || 0.05,
+                  },
+                }))
+              )
+            }
+          >
+            {t('Video resolution tiers')}
+          </Button>
+        </div>
+      )}
 
       <div className='bg-muted/30 space-y-3 rounded-md border p-3'>
         {editorMode === 'visual' ? (

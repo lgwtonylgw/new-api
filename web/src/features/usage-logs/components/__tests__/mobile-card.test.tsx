@@ -72,12 +72,17 @@ function Fixture(props: {
     state: { columnVisibility: props.visibility ?? {} },
   })
   if (props.desktopTokens) {
-    const cell = table
-      .getRowModel()
-      .rows[0].getAllCells()
-      .find((item) => item.column.id === 'prompt_tokens')
-    if (!cell) throw new Error('The log must have a tokens column')
-    return flexRender(cell.column.columnDef.cell, cell.getContext())
+    return table.getRowModel().rows.map((row) => {
+      const cell = row
+        .getAllCells()
+        .find((item) => item.column.id === 'prompt_tokens')
+      if (!cell) throw new Error('The log must have a tokens column')
+      return (
+        <div key={row.id}>
+          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+        </div>
+      )
+    })
   }
   return (
     <>
@@ -376,6 +381,49 @@ it('explains the per-request cache rate when tapped', async () => {
   await user.keyboard('{Enter}')
   expect(await screen.findByRole('dialog')).toBeVisible()
 })
+
+it.each([false, true])(
+  'shows video pre-consumption and settlement separately (desktop: %s)',
+  (desktopTokens) => {
+    renderLogs({
+      desktopTokens,
+      logs: [
+        {
+          ...log,
+          other: JSON.stringify({
+            is_task: true,
+            billing_mode: 'tiered_expr',
+            matched_tier: '768P',
+            usage_facts: { seconds: 7.5, resolution: '768P' },
+            cache_tokens: 300,
+          }),
+        },
+        ...([2, 6] as const).map((type) => ({
+          ...log,
+          id: log.id + type,
+          type,
+          other: JSON.stringify({
+            task_id: 'task_test',
+            actual_quota: 100,
+            billing_mode: 'tiered_expr',
+            usage_facts: { seconds: type === 2 ? 8 : 6, resolution: '2K' },
+          }),
+        })),
+      ],
+    })
+
+    expect(screen.getByText('7.5s')).toBeVisible()
+    expect(screen.getByText('/ 768P')).toBeVisible()
+    expect(screen.getByText('(Pre-consumed)')).toBeVisible()
+    expect(screen.getByText('8s')).toBeVisible()
+    expect(screen.getByText('6s')).toBeVisible()
+    expect(screen.getAllByText('/ 2K')).toHaveLength(2)
+    expect(screen.queryByText('1,200 / 800')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Input cache hit rate/ })
+    ).not.toBeInTheDocument()
+  }
+)
 
 it.each([false, true])(
   'shows billable image count and the recorded tier in the usage column (desktop: %s)',
