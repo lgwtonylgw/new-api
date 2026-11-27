@@ -82,6 +82,7 @@ import {
   type TimeCondition,
   type TimeFunc,
 } from '@/features/pricing/lib/billing-expr'
+import { evaluateBillingExpression } from '@/features/pricing/lib/billing-expression/runtime'
 import {
   parseVisualBillingDocument,
   serializeVisualBillingDocument,
@@ -90,7 +91,6 @@ import {
 import {
   type ExtraTokenValues,
   createDefaultVisualConfig,
-  evalExprLocally,
   buildEstimatorTokens,
   exprUsesExtraVars,
   generateExprFromVisualConfig,
@@ -768,14 +768,23 @@ function CostEstimator({ effectiveExpr, fullExpr, currency }: EstimatorProps) {
 
   const result = useMemo(
     () =>
-      evalExprLocally(effectiveExpr, promptTokens, completionTokens, extras, {
+      evaluateBillingExpression(effectiveExpr.trim() ? effectiveExpr : '0', {
         tokens,
         now: billingTime === undefined ? undefined : new Date(billingTime),
       }),
-    [effectiveExpr, promptTokens, completionTokens, extras, tokens, billingTime]
+    [effectiveExpr, tokens, billingTime]
   )
 
-  if (result.error === 'task usage') {
+  const diagnostic = result.status === 'success' ? null : result.diagnostic
+  const needsRequest =
+    diagnostic?.code === 'missing_context' &&
+    (diagnostic.detail === 'request body' ||
+      diagnostic.detail === 'request headers')
+
+  if (
+    diagnostic?.code === 'missing_context' &&
+    diagnostic.detail === 'task usage'
+  ) {
     return (
       <Alert>
         <AlertDescription>
@@ -863,33 +872,41 @@ function CostEstimator({ effectiveExpr, fullExpr, currency }: EstimatorProps) {
           })}
         </div>
       )}
-      <div
-        className={cn(
-          'rounded-md border p-3 text-sm',
-          result.error
-            ? 'border-destructive/50 bg-destructive/10 text-destructive'
-            : 'border-primary/50 bg-primary/10'
-        )}
-      >
-        {result.error ? (
-          <span>
-            {t('Expression error')}: {result.error}
-          </span>
-        ) : (
-          <div className='flex items-center gap-2'>
-            <span className='font-medium'>
-              {t('Estimated cost')}:{' '}
-              {formatPricingAmount(result.cost / 1_000_000, currency)}
-              {result.billingUnit === 'request' && `/${t('request')}`}
+      {needsRequest ? (
+        <p className='text-muted-foreground text-sm'>
+          {t(
+            'Open Request simulation to enter the request body or headers and preview the cost.'
+          )}
+        </p>
+      ) : (
+        <div
+          className={cn(
+            'rounded-md border p-3 text-sm',
+            result.status === 'success'
+              ? 'border-primary/50 bg-primary/10'
+              : 'border-destructive/50 bg-destructive/10 text-destructive'
+          )}
+        >
+          {result.status !== 'success' ? (
+            <span>
+              {t('Expression error')}: {result.diagnostic.detail}
             </span>
-            {result.matchedTier && (
-              <Badge variant='outline' className='text-xs'>
-                {t('Hit tier')}: {result.matchedTier}
-              </Badge>
-            )}
-          </div>
-        )}
-      </div>
+          ) : (
+            <div className='flex items-center gap-2'>
+              <span className='font-medium'>
+                {t('Estimated cost')}:{' '}
+                {formatPricingAmount(result.cost / 1_000_000, currency)}
+                {result.billingUnit === 'request' && `/${t('request')}`}
+              </span>
+              {result.matchedTier && (
+                <Badge variant='outline' className='text-xs'>
+                  {t('Hit tier')}: {result.matchedTier}
+                </Badge>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       <RequestSimulation
         expression={fullExpr}
         tokens={tokens}

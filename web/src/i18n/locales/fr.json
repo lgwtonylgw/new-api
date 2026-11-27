@@ -4517,6 +4517,7 @@
     "Open API Keys, create a named key, and select the appropriate group, quota, expiration, and model restrictions. Copy the connection information for your client.": "Dans Clés API, créez une clé nommée, réglez le groupe, le quota, l’expiration et les restrictions de modèles, puis copiez les informations de connexion.",
     "Open CC Switch": "Ouvrir le commutateur CC",
     "Open filtered model list": "Voir les modèles filtrés",
+    "Open Request simulation to enter the request body or headers and preview the cost.": "Ouvrez la simulation de requête pour saisir le corps ou les en-têtes et estimer le coût.",
     "Open in chat": "Ouvrir dans le chat",
     "Open in new tab": "Ouvrir dans un nouvel onglet",
     "Open in New Tab": "Ouvrir dans un nouvel onglet",

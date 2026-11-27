@@ -4517,6 +4517,7 @@
     "Open API Keys, create a named key, and select the appropriate group, quota, expiration, and model restrictions. Copy the connection information for your client.": "開啟 API 金鑰，建立具名金鑰，設定合適的群組、額度、有效期限和模型限制，再複製用戶端連線資訊。",
     "Open CC Switch": "打開 CC Switch",
     "Open filtered model list": "查看已篩選模型清單",
+    "Open Request simulation to enter the request body or headers and preview the cost.": "展開「請求模擬」，填寫請求本文或標頭後即可預覽費用。",
     "Open in chat": "在聊天中打開",
     "Open in new tab": "在新標籤頁中打開",
     "Open in New Tab": "在新標籤頁中打開",

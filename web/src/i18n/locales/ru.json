@@ -4517,6 +4517,7 @@
     "Open API Keys, create a named key, and select the appropriate group, quota, expiration, and model restrictions. Copy the connection information for your client.": "В разделе ключей API создайте именованный ключ, задайте группу, квоту, срок и ограничения моделей. Скопируйте данные подключения.",
     "Open CC Switch": "Открыть CC Switch",
     "Open filtered model list": "Открыть отфильтрованный список",
+    "Open Request simulation to enter the request body or headers and preview the cost.": "Откройте симуляцию запроса, чтобы ввести тело или заголовки и оценить стоимость.",
     "Open in chat": "Открыть в чате",
     "Open in new tab": "Открыть в новой вкладке",
     "Open in New Tab": "Открыть в новой вкладке",

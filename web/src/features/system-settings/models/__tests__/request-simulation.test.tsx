@@ -31,6 +31,36 @@ const requestExpression =
 afterEach(() => vi.useRealTimers())
 
 describe('request simulation', () => {
+  test('asks for a request body when a size tier cannot be estimated from tokens', async () => {
+    render(
+      <TieredPricingEditor
+        billingExpr='param("size") == "2048x2048" ? tier("2K", fixed(0.12)) * image_count : tier("4K", fixed(0.15)) * image_count'
+        requestRuleExpr=''
+        onBillingExprChange={vi.fn()}
+        onRequestRuleExprChange={vi.fn()}
+      />
+    )
+
+    expect(
+      screen.getByText(
+        'Open Request simulation to enter the request body or headers and preview the cost.'
+      )
+    ).toBeVisible()
+    expect(screen.queryByText(/Expression error:/)).not.toBeInTheDocument()
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Request simulation' }))
+    fireEvent.input(
+      screen.getByRole('textbox', { name: 'Simulated request body' }),
+      { target: { value: '{"size":"2048x2048"}' } }
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('Hit tier: 2K')
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Simulated request cost: $0.12'
+    )
+  })
+
   test('explains absent task usage instead of showing a token estimator syntax error', () => {
     render(
       <TieredPricingEditor

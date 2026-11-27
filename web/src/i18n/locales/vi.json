@@ -4517,6 +4517,7 @@
     "Open API Keys, create a named key, and select the appropriate group, quota, expiration, and model restrictions. Copy the connection information for your client.": "Mở Khóa API, tạo khóa có tên và chọn nhóm, hạn mức, thời hạn cùng giới hạn mô hình phù hợp. Sao chép thông tin kết nối cho ứng dụng.",
     "Open CC Switch": "Mở công tắc CC",
     "Open filtered model list": "Mở danh sách mô hình đã lọc",
+    "Open Request simulation to enter the request body or headers and preview the cost.": "Mở Mô phỏng yêu cầu để nhập nội dung hoặc tiêu đề yêu cầu và xem trước chi phí.",
     "Open in chat": "Mở trong trò chuyện",
     "Open in new tab": "Mở trong tab mới",
     "Open in New Tab": "Mở trong tab mới",
