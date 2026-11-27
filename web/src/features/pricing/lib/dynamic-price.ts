@@ -52,6 +52,7 @@ export type DynamicPriceOptions = {
   priceRate?: number
   usdExchangeRate?: number
   groupRatioMultiplier?: number
+  imageGroupRatioMultiplier?: number
   usageSchema?: BillingUsageSchema
   now?: Date
 }
@@ -180,11 +181,14 @@ export function getTaskPricingUnit(
   return primaryField?.[1].unit ?? null
 }
 
-export function getDynamicDisplayGroupRatio(
+export function getDynamicGroupRatios(
   model: PricingModel,
   selectedGroup?: string
-): number {
-  return getDisplayGroupRatio(model, selectedGroup)
+) {
+  return {
+    groupRatioMultiplier: getDisplayGroupRatio(model, selectedGroup),
+    imageGroupRatioMultiplier: getDisplayGroupRatio(model, selectedGroup, true),
+  }
 }
 
 function applyRechargeRate(
@@ -296,7 +300,13 @@ export function getDynamicPriceEntries(
         shortLabel: tier.imageCount ? 'Per image' : 'Per-call',
         labelKind: 'i18n',
         value: tier.fixedPrice,
-        formatted: formatTaskUsageUnitPrice(tier.fixedPrice, options),
+        formatted: formatTaskUsageUnitPrice(tier.fixedPrice, {
+          ...options,
+          groupRatioMultiplier: tier.imageCount
+            ? (options.imageGroupRatioMultiplier ??
+              options.groupRatioMultiplier)
+            : options.groupRatioMultiplier,
+        }),
         unit: tier.imageCount ? 'image' : 'request',
       },
     ]

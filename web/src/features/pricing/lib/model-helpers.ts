@@ -16,7 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { EXCLUDED_GROUPS, FILTER_ALL, QUOTA_TYPE_VALUES } from '../constants'
+import {
+  ENDPOINT_TYPES,
+  EXCLUDED_GROUPS,
+  FILTER_ALL,
+  QUOTA_TYPE_VALUES,
+} from '../constants'
 import type { PricingModel } from '../types'
 
 // ----------------------------------------------------------------------------
@@ -59,12 +64,16 @@ export function getConfiguredGroupRatio(
  */
 export function getDisplayGroupRatio(
   model: PricingModel,
-  selectedGroup?: string
+  selectedGroup?: string,
+  perImage = false
 ): number {
   const modelEnableGroups = Array.isArray(model.enable_groups)
     ? model.enable_groups
     : []
-  const groupRatio = model.group_ratio || {}
+  const groupRatio =
+    perImage && supportsImagePricing(model)
+      ? { ...model.group_ratio, ...model.image_group_ratio }
+      : (model.group_ratio ?? {})
 
   if (
     selectedGroup &&
@@ -92,6 +101,13 @@ export function getDisplayGroupRatio(
   }
 
   return minRatio === Number.POSITIVE_INFINITY ? 1 : minRatio
+}
+
+export function supportsImagePricing(model: PricingModel): boolean {
+  return (
+    model.supported_endpoint_types?.includes(ENDPOINT_TYPES.IMAGE_GENERATION) ??
+    false
+  )
 }
 
 /**

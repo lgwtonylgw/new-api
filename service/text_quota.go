@@ -537,7 +537,8 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 	if tieredBillingApplied {
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
-
+	} else if group := relayInfo.PriceData.GroupRatioInfo; relayInfo.PriceData.UsePrice && group.ImageGroupRatio != nil {
+		setImageGroupRatioLogInfo(other, *group.ImageGroupRatio)
 	}
 
 	attachQuotaSaturation(ctx, relayInfo, other)

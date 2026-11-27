@@ -27,6 +27,7 @@ function PricingFixture() {
   const [settings, setSettings] = useState<Record<string, string>>({
     GroupRatio: '{"default":1}',
     TopupGroupRatio: '{}',
+    ImageGroupRatio: '{}',
     UserUsableGroups: '{}',
   })
   return (
@@ -36,6 +37,7 @@ function PricingFixture() {
         onSectionChange={() => {}}
         defaultUseAutoGroupField={null}
         groupRatio={settings.GroupRatio}
+        imageGroupRatio={settings.ImageGroupRatio}
         topupGroupRatio={settings.TopupGroupRatio}
         userUsableGroups={settings.UserUsableGroups}
         groupGroupRatio='{}'
@@ -52,18 +54,19 @@ function PricingFixture() {
 }
 
 test.each([
-  ['GroupRatio', 0],
-  ['TopupGroupRatio', 1],
+  ['GroupRatio', 'Ratio'],
+  ['ImageGroupRatio', 'Image group ratio'],
+  ['TopupGroupRatio', 'Top-up ratio'],
 ] as const)(
   '%s preserves typed decimals and accepts them as valid numeric ratios',
-  async (key, index) => {
+  async (key, label) => {
     const user = userEvent.setup()
     render(<PricingFixture />)
     const row = screen.getByDisplayValue('default').closest('tr')
     assert(row)
-    const input = within(row).getAllByRole('spinbutton')[
-      index
-    ] as HTMLInputElement
+    const input = within(row).getByRole('spinbutton', {
+      name: label,
+    }) as HTMLInputElement
     fireEvent.change(input, { target: { value: '0.0' } })
     expect(input.value).toBe('0.0')
     await user.clear(input)

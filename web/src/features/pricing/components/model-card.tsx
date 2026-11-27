@@ -31,13 +31,13 @@ import { DEFAULT_TOKEN_UNIT } from '../constants'
 import { useBillingTime } from '../hooks/use-billing-time'
 import {
   getCardExamplePrice,
-  getDynamicDisplayGroupRatio,
+  getDynamicGroupRatios,
   getDynamicPriceUnitLabelKey,
   getDynamicPricingSummary,
   isUnconfiguredTaskUsageModel,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
-import { isTokenBasedModel } from '../lib/model-helpers'
+import { isTokenBasedModel, supportsImagePricing } from '../lib/model-helpers'
 import { formatPrice, formatRequestPrice } from '../lib/price'
 import { taskPriceLabel, taskUsageUnitLabel } from '../lib/task-price-display'
 import type { PricingModel, PriceType, TokenUnit } from '../types'
@@ -79,10 +79,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       showRechargePrice,
       priceRate,
       usdExchangeRate,
-      groupRatioMultiplier: getDynamicDisplayGroupRatio(
-        props.model,
-        props.selectedGroup
-      ),
+      ...getDynamicGroupRatios(props.model, props.selectedGroup),
     }),
     [
       props.model,
@@ -246,7 +243,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           )}
           <span className='text-muted-foreground text-xs font-normal'>
             {' '}
-            / {t('request')}
+            / {supportsImagePricing(props.model) ? t('image') : t('request')}
           </span>
         </span>
       </div>

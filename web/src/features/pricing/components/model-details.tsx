@@ -70,7 +70,12 @@ import {
   type DynamicPriceEntry,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
-import { getAvailableGroups, isTokenBasedModel } from '../lib/model-helpers'
+import {
+  getAvailableGroups,
+  getConfiguredGroupRatio,
+  isTokenBasedModel,
+  supportsImagePricing,
+} from '../lib/model-helpers'
 import { withPluginPricing } from '../lib/plugin-pricing'
 import { formatFixedPrice, formatGroupPrice } from '../lib/price'
 import {
@@ -1157,9 +1162,12 @@ function ProviderGroupPricingSection(
       groupRatioMultiplier: 1,
       usageSchema: props.model.billing_usage_schema,
     })
+    const perImagePricing =
+      supportsImagePricing(props.model) &&
+      priceFields.some((field) => field.unit === 'image')
     const formattedPricesByGroup = new Map(
       availableGroups.map((group) => {
-        const ratio = props.groupRatio[group] || 1
+        const ratio = getConfiguredGroupRatio(props.groupRatio, group)
         return [
           group,
           getDynamicFormattedPricesByTier(dynamicTiers, {
@@ -1168,6 +1176,9 @@ function ProviderGroupPricingSection(
             priceRate: props.priceRate,
             usdExchangeRate: props.usdExchangeRate,
             groupRatioMultiplier: ratio,
+            imageGroupRatioMultiplier: perImagePricing
+              ? props.model.image_group_ratio?.[group]
+              : undefined,
             usageSchema: props.model.billing_usage_schema,
           }),
         ] as const
@@ -1182,7 +1193,10 @@ function ProviderGroupPricingSection(
         <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
         <div className='space-y-3'>
           {availableGroups.map((group) => {
-            const ratio = props.groupRatio[group] || 1
+            const ratio = getConfiguredGroupRatio(props.groupRatio, group)
+            const imageRatio = perImagePricing
+              ? props.model.image_group_ratio?.[group]
+              : undefined
             const formattedPricesByTier =
               formattedPricesByGroup.get(group) ??
               new Map<DynamicPricingTier, Map<string, string>>()
@@ -1192,7 +1206,9 @@ function ProviderGroupPricingSection(
                 <div className='bg-muted/20 flex items-center justify-between gap-3 border-b px-3 py-2'>
                   <GroupBadge group={group} size='sm' />
                   <span className='text-muted-foreground font-mono text-xs'>
-                    {ratio}x
+                    {imageRatio === undefined
+                      ? `${ratio}x`
+                      : `${ratio}x · ${t('Image group ratio')} ${imageRatio}x`}
                   </span>
                 </div>
                 <StaticDataTable
@@ -1388,7 +1404,16 @@ function ProviderGroupPricingSection(
             header: t('Ratio'),
             className: thClass,
             cellClassName: 'text-muted-foreground py-2.5 font-mono',
-            cell: (group) => `${props.groupRatio[group] || 1}x`,
+            cell: (group) => {
+              const ratio = getConfiguredGroupRatio(props.groupRatio, group)
+              const imageRatio =
+                !isTokenBased && supportsImagePricing(props.model)
+                  ? props.model.image_group_ratio?.[group]
+                  : undefined
+              return imageRatio === undefined
+                ? `${ratio}x`
+                : `${t('Image group ratio')} ${imageRatio}x`
+            },
           },
           ...(isTokenBased
             ? [

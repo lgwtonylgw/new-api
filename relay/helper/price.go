@@ -56,6 +56,11 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 		// normal group ratio
 		groupRatioInfo.GroupRatio = ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
 	}
+	if _, image := relayInfo.Request.(*dto.ImageRequest); image {
+		if ratio, configured := ratio_setting.GetImageGroupRatio(relayInfo.UsingGroup); configured {
+			groupRatioInfo.ImageGroupRatio = &ratio
+		}
+	}
 
 	return groupRatioInfo
 }
@@ -130,6 +135,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 			modelPrice = modelPrice * meta.ImagePriceRatio
 		}
 		if _, image := info.Request.(*dto.ImageRequest); image {
+			groupRatioInfo = groupRatioInfo.ForFixedImage()
 			info.ImageQuotaBeforeGroup = modelPrice * common.QuotaPerUnit
 		}
 	}
@@ -376,14 +382,15 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billing
 	if trace.BillingUnit != billingexpr.BillingUnitRequest {
 		quotaBeforeGroup *= preConsumeMultiplier
 	}
-	preConsumedQuota, err := billingexpr.QuotaRoundStrict(quotaBeforeGroup * groupRatioInfo.GroupRatio)
+	effectiveRatio := billingexpr.ImageAwareGroupRatio(groupRatioInfo.GroupRatio, groupRatioInfo.ImageGroupRatio, trace.BillingUnit, trace.ImageCount)
+	preConsumedQuota, err := billingexpr.QuotaRoundStrict(quotaBeforeGroup * effectiveRatio)
 	if err != nil {
 		return hosttypes.PriceData{}, err
 	}
 
 	freeModel := false
 	if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
-		if groupRatioInfo.GroupRatio == 0 {
+		if effectiveRatio == 0 {
 			preConsumedQuota = 0
 			freeModel = true
 		}
@@ -396,6 +403,7 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billing
 		ExprString:                exprStr,
 		ExprHash:                  exprHash,
 		GroupRatio:                groupRatioInfo.GroupRatio,
+		ImageGroupRatio:           groupRatioInfo.ImageGroupRatio,
 		EstimatedPromptTokens:     promptTokens,
 		EstimatedCompletionTokens: 0,
 		PreConsumeMultiplier:      preConsumeMultiplier,
@@ -416,7 +424,7 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billing
 		QuotaToPreConsume: preConsumedQuota,
 	}
 
-	logger.LogDebug(c, "model_price_helper_tiered result: model=%s preConsume=%d quotaBeforeGroup=%.2f groupRatio=%.2f tier=%s", billingModelName, preConsumedQuota, quotaBeforeGroup, groupRatioInfo.GroupRatio, trace.MatchedTier)
+	logger.LogDebug(c, "model_price_helper_tiered result: model=%s preConsume=%d quotaBeforeGroup=%.2f groupRatio=%.2f tier=%s", billingModelName, preConsumedQuota, quotaBeforeGroup, effectiveRatio, trace.MatchedTier)
 
 	info.PriceData = priceData
 	return priceData, nil

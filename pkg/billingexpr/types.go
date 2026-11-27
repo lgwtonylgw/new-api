@@ -69,6 +69,7 @@ type BillingSnapshot struct {
 	ExprString                string         `json:"expr_string"`
 	ExprHash                  string         `json:"expr_hash"`
 	GroupRatio                float64        `json:"group_ratio"`
+	ImageGroupRatio           *float64       `json:"image_group_ratio,omitempty"`
 	EstimatedPromptTokens     int            `json:"estimated_prompt_tokens"`
 	EstimatedCompletionTokens int            `json:"estimated_completion_tokens"`
 	PreConsumeMultiplier      float64        `json:"pre_consume_multiplier,omitempty"` // Reservation only; zero in older snapshots means 1.
@@ -81,6 +82,18 @@ type BillingSnapshot struct {
 	ExprVersion               int            `json:"expr_version"`
 	TaskUsageBilling          bool           `json:"task_usage_billing,omitempty"`
 	UsageFacts                map[string]any `json:"usage_facts,omitempty"`
+}
+
+// ImageAwareGroupRatio applies the override only to the per-image branch.
+func ImageAwareGroupRatio(groupRatio float64, imageRatio *float64, unit BillingUnit, imageCount *int) float64 {
+	if imageRatio != nil && unit == BillingUnitRequest && imageCount != nil {
+		return *imageRatio
+	}
+	return groupRatio
+}
+
+func (snap *BillingSnapshot) EstimatedGroupRatio() float64 {
+	return ImageAwareGroupRatio(snap.GroupRatio, snap.ImageGroupRatio, snap.EstimatedBillingUnit, snap.EstimatedImageCount)
 }
 
 // TieredResult holds everything needed after running tiered settlement.

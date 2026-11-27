@@ -322,6 +322,9 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	}
 
 	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
+	if info.PriceData.UsePrice {
+		info.PriceData.GroupRatioInfo = info.PriceData.GroupRatioInfo.ForFixedImage()
+	}
 
 	service.RequestPolicy(c).BeginAttempt(channel, selectGroup)
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)

@@ -2,6 +2,7 @@ package openai
 
 import (
 	"bytes"
+	"encoding/base64"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -23,7 +24,7 @@ import (
 func TestConvertImageEditRequestMultipart(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	newMultipartContext := func(t *testing.T, prompt, filenameSuffix string) *gin.Context {
+	newMultipartContext := func(t *testing.T, prompt, filenameSuffix string, image []byte) *gin.Context {
 		var body bytes.Buffer
 		writer := multipart.NewWriter(&body)
 		require.NoError(t, writer.WriteField("model", "gpt-image-1"))
@@ -32,7 +33,7 @@ func TestConvertImageEditRequestMultipart(t *testing.T) {
 		require.NoError(t, writer.WriteField("partial_images", "3"))
 		part, err := writer.CreateFormFile("image", "input"+filenameSuffix)
 		require.NoError(t, err)
-		_, err = part.Write([]byte("fake image"))
+		_, err = part.Write(image)
 		require.NoError(t, err)
 		require.NoError(t, writer.WriteField("complexity", "low"))
 		for _, name := range []string{"mask", "markup"} {
@@ -49,7 +50,7 @@ func TestConvertImageEditRequestMultipart(t *testing.T) {
 		return c
 	}
 
-	convertAndReplay := func(t *testing.T, c *gin.Context, prompt, filenameSuffix string) {
+	convertAndReplay := func(t *testing.T, c *gin.Context, prompt, filenameSuffix string, image []byte, mimeType string) {
 		info := &relaycommon.RelayInfo{
 			RelayMode: relayconstant.RelayModeImagesEdits,
 		}
@@ -87,20 +88,22 @@ func TestConvertImageEditRequestMultipart(t *testing.T) {
 		defer file.Close()
 		fileBytes, err := io.ReadAll(file)
 		require.NoError(t, err)
-		require.Equal(t, []byte("fake image"), fileBytes)
+		require.Equal(t, image, fileBytes)
+		require.Equal(t, mimeType, replayedRequest.MultipartForm.File["image"][0].Header.Get("Content-Type"))
 	}
 
+	fakeImage := []byte("fake image")
 	t.Run("with pre-parsed form", func(t *testing.T) {
 		prompt := "edit this image"
-		c := newMultipartContext(t, prompt, ".png")
+		c := newMultipartContext(t, prompt, ".png", fakeImage)
 		require.NoError(t, c.Request.ParseMultipartForm(32<<20))
 
-		convertAndReplay(t, c, prompt, ".png")
+		convertAndReplay(t, c, prompt, ".png", fakeImage, "image/png")
 	})
 
 	t.Run("re-parses reusable body when form is missing", func(t *testing.T) {
 		prompt := "edit without pre-parsed form"
-		c := newMultipartContext(t, prompt, ".png")
+		c := newMultipartContext(t, prompt, ".png", fakeImage)
 
 		storage, err := common.GetBodyStorage(c)
 		require.NoError(t, err)
@@ -108,13 +111,22 @@ func TestConvertImageEditRequestMultipart(t *testing.T) {
 		c.Request.MultipartForm = nil
 		c.Request.PostForm = nil
 
-		convertAndReplay(t, c, prompt, ".png")
+		convertAndReplay(t, c, prompt, ".png", fakeImage, "image/png")
 	})
 
 	t.Run("quoted filenames survive multipart reconstruction", func(t *testing.T) {
 		const suffix = `"quoted".png`
 		prompt := "edit with a quoted filename"
-		c := newMultipartContext(t, prompt, suffix)
-		convertAndReplay(t, c, prompt, suffix)
+		c := newMultipartContext(t, prompt, suffix, fakeImage)
+		convertAndReplay(t, c, prompt, suffix, fakeImage, "image/png")
+	})
+
+	t.Run("webp keeps its MIME type and body", func(t *testing.T) {
+		image, err := base64.StdEncoding.DecodeString("UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==")
+		require.NoError(t, err)
+		require.Equal(t, "image/webp", http.DetectContentType(image))
+		const prompt = "edit a WebP reference"
+		c := newMultipartContext(t, prompt, ".webp", image)
+		convertAndReplay(t, c, prompt, ".webp", image, "image/webp")
 	})
 }

@@ -16,6 +16,7 @@ var defaultGroupRatio = map[string]float64{
 }
 
 var groupRatioMap = types.NewRWMap[string, float64]()
+var imageGroupRatioMap = types.NewRWMap[string, float64]()
 
 var defaultGroupGroupRatio = map[string]map[string]float64{
 	"vip": {
@@ -61,6 +62,37 @@ func GetGroupRatioSetting() *GroupRatioSetting {
 
 func GetGroupRatioCopy() map[string]float64 {
 	return groupRatioMap.ReadAll()
+}
+
+func GetImageGroupRatio(name string) (float64, bool) {
+	return imageGroupRatioMap.Get(name)
+}
+
+func ImageGroupRatio2JSONString() string {
+	return imageGroupRatioMap.MarshalJSONString()
+}
+
+func UpdateImageGroupRatioByJSONString(value string) error {
+	if err := CheckImageGroupRatio(value); err != nil {
+		return err
+	}
+	return types.LoadFromJsonString(imageGroupRatioMap, value)
+}
+
+func CheckImageGroupRatio(value string) error {
+	var ratios map[string]*float64
+	if err := json.Unmarshal([]byte(value), &ratios); err != nil {
+		return err
+	}
+	if ratios == nil {
+		return errors.New("image group ratios must be a JSON object")
+	}
+	for name, ratio := range ratios {
+		if ratio == nil || *ratio < 0 {
+			return errors.New("image group ratio must be a non-negative number: " + name)
+		}
+	}
+	return nil
 }
 
 func ContainsGroupRatio(name string) bool {

@@ -48,6 +48,7 @@ export const defaultBillingSettings: BillingSettings = {
   'tool_price_setting.prices': '{}',
   TopupGroupRatio: '',
   GroupRatio: '',
+  ImageGroupRatio: '{}',
   UserUsableGroups: '',
   GroupGroupRatio: '',
   AutoGroups: '',

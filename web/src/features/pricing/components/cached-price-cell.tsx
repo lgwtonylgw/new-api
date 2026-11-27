@@ -24,7 +24,7 @@ import { useSystemConfigStore } from '@/stores/system-config-store'
 import { DEFAULT_TOKEN_UNIT } from '../constants'
 import { useBillingTime } from '../hooks/use-billing-time'
 import {
-  getDynamicDisplayGroupRatio,
+  getDynamicGroupRatios,
   getDynamicPricingSummary,
   isUnconfiguredTaskUsageModel,
 } from '../lib/dynamic-price'
@@ -59,7 +59,7 @@ export function CachedPriceCell(props: {
         showRechargePrice,
         priceRate,
         usdExchangeRate,
-        groupRatioMultiplier: getDynamicDisplayGroupRatio(model, selectedGroup),
+        ...getDynamicGroupRatios(model, selectedGroup),
       }),
     // Currency is read indirectly by the price formatter.
     // eslint-disable-next-line react-hooks/exhaustive-deps

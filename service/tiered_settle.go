@@ -184,18 +184,17 @@ func refreshTieredBillingGroup(relayInfo *relaycommon.RelayInfo) (*billingexpr.B
 		return nil, nil
 	}
 
-	groupRatio := relayInfo.PriceData.GroupRatioInfo.GroupRatio
-	if snap.GroupRatio == groupRatio {
-		return snap, nil
+	group := relayInfo.PriceData.GroupRatioInfo
+	estimatedRatio := billingexpr.ImageAwareGroupRatio(group.GroupRatio, group.ImageGroupRatio, snap.EstimatedBillingUnit, snap.EstimatedImageCount)
+	if estimatedRatio != snap.EstimatedGroupRatio() {
+		estimatedQuota, err := billingexpr.QuotaRoundStrict(snap.EstimatedQuotaBeforeGroup * estimatedRatio)
+		if err != nil {
+			return nil, err
+		}
+		snap.EstimatedQuotaAfterGroup = estimatedQuota
 	}
-
-	estimatedQuotaAfterGroup := snap.EstimatedQuotaBeforeGroup * groupRatio
-	estimatedQuota, err := billingexpr.QuotaRoundStrict(estimatedQuotaAfterGroup)
-	if err != nil {
-		return nil, err
-	}
-	snap.GroupRatio = groupRatio
-	snap.EstimatedQuotaAfterGroup = estimatedQuota
+	snap.GroupRatio = group.GroupRatio
+	snap.ImageGroupRatio = group.ImageGroupRatio
 	return snap, nil
 }
 
@@ -216,7 +215,7 @@ func PrepareTieredBillingForSelectedGroup(c *gin.Context, relayInfo *relaycommon
 	if snap == nil {
 		return nil
 	}
-	if snap.GroupRatio == 0 {
+	if snap.EstimatedGroupRatio() == 0 {
 		// Paid-to-free keeps FreeModel as-is: FreeModel means "pre-consume was
 		// skipped", which is not true once a session exists, and settlement
 		// already yields 0 for a zero group ratio.

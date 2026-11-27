@@ -25,12 +25,12 @@ import { useSystemConfigStore } from '@/stores/system-config-store'
 import { DEFAULT_TOKEN_UNIT } from '../constants'
 import { useBillingTime } from '../hooks/use-billing-time'
 import {
-  getDynamicDisplayGroupRatio,
+  getDynamicGroupRatios,
   getDynamicPriceUnitLabelKey,
   getDynamicPricingSummary,
   isUnconfiguredTaskUsageModel,
 } from '../lib/dynamic-price'
-import { isTokenBasedModel } from '../lib/model-helpers'
+import { isTokenBasedModel, supportsImagePricing } from '../lib/model-helpers'
 import { formatPrice, formatRequestPrice } from '../lib/price'
 import { taskUsageUnitLabel } from '../lib/task-price-display'
 import type { PricingModel, TokenUnit } from '../types'
@@ -65,10 +65,7 @@ export function ModelPriceCell(props: {
         now: billingTime === undefined ? undefined : new Date(billingTime),
         tokenUnit,
         showCurrencySymbol: false,
-        groupRatioMultiplier: getDynamicDisplayGroupRatio(
-          props.model,
-          options.selectedGroup
-        ),
+        ...getDynamicGroupRatios(props.model, options.selectedGroup),
       }),
     // Currency is read indirectly by the price formatter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -219,7 +216,9 @@ export function ModelPriceCell(props: {
     } else {
       metrics = [
         {
-          label: t('Per-request'),
+          label: supportsImagePricing(props.model)
+            ? t('Per image')
+            : t('Per-request'),
           value: formatRequestPrice(
             props.model,
             options.showRechargePrice,
@@ -230,7 +229,7 @@ export function ModelPriceCell(props: {
           ),
         },
       ]
-      caption = `${currencyLabel} / ${t('request')}`
+      caption = `${currencyLabel} / ${supportsImagePricing(props.model) ? t('image') : t('request')}`
     }
   }
   return (

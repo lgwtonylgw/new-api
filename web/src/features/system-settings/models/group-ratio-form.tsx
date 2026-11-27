@@ -67,6 +67,7 @@ import {
 
 type GroupFormValues = {
   GroupRatio: string
+  ImageGroupRatio: string
   TopupGroupRatio: string
   UserUsableGroups: string
   GroupGroupRatio: string
@@ -168,6 +169,7 @@ export const GroupRatioForm = memo(function GroupRatioForm({
             section={section}
             onSectionChange={setSection}
             groupRatio={values.GroupRatio ?? ''}
+            imageGroupRatio={values.ImageGroupRatio ?? '{}'}
             topupGroupRatio={values.TopupGroupRatio ?? ''}
             userUsableGroups={values.UserUsableGroups ?? ''}
             groupGroupRatio={values.GroupGroupRatio ?? ''}
@@ -249,6 +251,31 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                   <FormDescription>
                     {t(
                       'JSON map of group → ratio applied when the user selects the group explicitly.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='ImageGroupRatio'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Image group ratios')}</FormLabel>
+                  <FormControl>
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Applies to per-image charges. Leave unset to use the regular group ratio.'
                     )}
                   </FormDescription>
                   <FormMessage />

@@ -19,6 +19,16 @@ type GroupRatioInfo struct {
 	GroupRatio        float64
 	GroupSpecialRatio float64
 	HasSpecialRatio   bool
+	ImageGroupRatio   *float64
+}
+
+func (g GroupRatioInfo) ForFixedImage() GroupRatioInfo {
+	if g.ImageGroupRatio != nil {
+		g.GroupRatio = *g.ImageGroupRatio
+		g.GroupSpecialRatio = -1
+		g.HasSpecialRatio = false
+	}
+	return g
 }
 
 type PriceData struct {

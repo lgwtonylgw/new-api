@@ -737,6 +737,113 @@ func TestInputPreConsumeMultiplierLegacyAndRequestPrices(t *testing.T) {
 	}
 }
 
+func TestIndependentImageGroupRatioWithResolutionAndRetry(t *testing.T) {
+	previous := config.GlobalConfig.ExportAllConfigs()
+	previousImageRatios := ratio_setting.ImageGroupRatio2JSONString()
+	previousPrices := ratio_setting.ModelPrice2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(previous))
+		require.NoError(t, ratio_setting.UpdateImageGroupRatioByJSONString(previousImageRatios))
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(previousPrices))
+	})
+	const modelName = "independent-image-test"
+	const expr = `param("size") == "1024x1024" ? tier("1K", fixed(0.04)) * image_count : param("size") == "2880x2880" ? tier("2K", fixed(0.06)) * image_count : param("size") == "4096x4096" ? tier("4K", fixed(0.08)) * image_count : tier("text", p * 2)`
+	exprs, err := common.Marshal(map[string]string{modelName: expr})
+	require.NoError(t, err)
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode":          `{"independent-image-test":"tiered_expr"}`,
+		"billing_setting.billing_expr":          string(exprs),
+		"group_ratio_setting.group_ratio":       `{"starter":0.11,"premium":0.24,"inherit":0.5,"free":1}`,
+		"group_ratio_setting.group_group_ratio": `{"customer":{"starter":0.1,"premium":0.2}}`,
+	}))
+	require.NoError(t, ratio_setting.UpdateImageGroupRatioByJSONString(`{"starter":1,"premium":1.5,"free":0}`))
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"independent-legacy-image-test":0.12}`))
+
+	for _, tc := range []struct {
+		size string
+		tier string
+		want int
+	}{
+		{"1024x1024", "1K", 20_000},
+		{"2880x2880", "2K", 30_000},
+		{"4096x4096", "4K", 40_000},
+	} {
+		t.Run(tc.tier, func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+			info := &relaycommon.RelayInfo{
+				OriginModelName: modelName, UserGroup: "customer", UsingGroup: "starter",
+				Request: &dto.ImageRequest{Model: modelName, Size: tc.size},
+			}
+			price, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, price.QuotaToPreConsume)
+			require.Equal(t, tc.tier, info.TieredBillingSnapshot.EstimatedTier)
+
+			reservation := &priceTestReservation{held: price.QuotaToPreConsume}
+			info.Billing = reservation
+			ctx.Set("auto_group", "premium")
+			info.PriceData.GroupRatioInfo = HandleGroupRatio(ctx, info)
+			require.Nil(t, service.PrepareTieredBillingForSelectedGroup(ctx, info))
+			require.Equal(t, tc.want*3/2, reservation.held)
+			require.Nil(t, service.PrepareImageBillingForRequest(ctx, info, 3))
+			require.Equal(t, tc.want*9/2, reservation.held)
+
+			info.UpdateImageCount(2)
+			ok, quota, result := service.TryTieredSettle(info, billingexpr.TokenParams{P: 1000})
+			require.True(t, ok)
+			require.NotNil(t, result)
+			require.Equal(t, tc.want*3, quota)
+			require.Equal(t, tc.tier, result.MatchedTier)
+		})
+	}
+
+	t.Run("token billing keeps account-specific text ratio", func(t *testing.T) {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+		info := &relaycommon.RelayInfo{
+			OriginModelName: modelName, UserGroup: "customer", UsingGroup: "starter",
+			Request: &dto.GeneralOpenAIRequest{Model: modelName},
+		}
+		_, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+		require.NoError(t, err)
+		require.Nil(t, info.TieredBillingSnapshot.ImageGroupRatio)
+		ok, quota, _ := service.TryTieredSettle(info, billingexpr.TokenParams{P: 1000})
+		require.True(t, ok)
+		require.Equal(t, 100, quota)
+	})
+
+	t.Run("token-priced image keeps the regular ratio", func(t *testing.T) {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+		info := &relaycommon.RelayInfo{
+			OriginModelName: modelName, UserGroup: "customer", UsingGroup: "starter",
+			Request: &dto.ImageRequest{Model: modelName},
+		}
+		_, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+		require.NoError(t, err)
+		require.NotNil(t, info.TieredBillingSnapshot.ImageGroupRatio)
+		ok, quota, _ := service.TryTieredSettle(info, billingexpr.TokenParams{P: 1000})
+		require.True(t, ok)
+		require.Equal(t, 100, quota)
+	})
+
+	t.Run("legacy fixed price can override or inherit", func(t *testing.T) {
+		const legacyModel = "independent-legacy-image-test"
+		for group, want := range map[string]int{"premium": 90_000, "inherit": 30_000, "free": 0} {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", nil)
+			info := &relaycommon.RelayInfo{
+				OriginModelName: legacyModel, UserGroup: "customer", UsingGroup: group,
+				Request: &dto.ImageRequest{Model: legacyModel},
+			}
+			price, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+			require.NoError(t, err)
+			require.Equal(t, want, price.QuotaToPreConsume, group)
+		}
+	})
+}
+
 // priceTestReservation observes the reservation requested before image submission.
 type priceTestReservation struct{ held int }
 

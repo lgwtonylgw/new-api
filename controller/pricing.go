@@ -40,6 +40,12 @@ func GetPricing(c *gin.Context) {
 	usableGroup := service.GetUserUsableGroups(userGroup)
 	pricing := filterPricingByUsableGroups(model.GetPricing(), usableGroup)
 	groupRatio := ratio_setting.GetGroupRatioCopy()
+	imageGroupRatio := make(map[string]float64)
+	for group := range usableGroup {
+		if ratio, ok := ratio_setting.GetImageGroupRatio(group); ok {
+			imageGroupRatio[group] = ratio
+		}
+	}
 	for group := range groupRatio {
 		if _, ok := usableGroup[group]; !ok {
 			delete(groupRatio, group)
@@ -57,6 +63,7 @@ func GetPricing(c *gin.Context) {
 		"data":               pricing,
 		"vendors":            model.GetVendors(),
 		"group_ratio":        groupRatio,
+		"image_group_ratio":  imageGroupRatio,
 		"usable_group":       usableGroup,
 		"supported_endpoint": model.GetSupportedEndpointMap(),
 		"auto_groups":        service.GetUserAutoGroup(userGroup),

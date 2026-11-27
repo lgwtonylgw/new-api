@@ -23,7 +23,10 @@ import { describe, expect, test } from 'vitest'
 import { parseTiersFromExpr } from '../lib/billing-expr'
 import { getBillingModeLabelKey } from '../lib/billing-mode'
 import {
+  formatTaskUsageUnitPrice,
   getCardExamplePrice,
+  getDynamicGroupRatios,
+  getDynamicPriceEntries,
   getDynamicPriceUnitLabelKey,
   getDynamicPricingSummary,
   getDynamicPricingTiers,
@@ -55,6 +58,42 @@ const summaryOptions = {
 }
 
 describe('expression price summaries', () => {
+  test('uses the independent group ratio for each image tier', () => {
+    const model = pricingModel({
+      billing_mode: 'tiered_expr',
+      enable_groups: ['default', 'free', 'standard'],
+      supported_endpoint_types: ['image-generation'],
+      group_ratio: { default: 0.11, free: 2, standard: 0.5 },
+      image_group_ratio: { default: 1.5, free: 0 },
+      billing_expr:
+        'param("size") == "1024x1024" ? tier("1K", fixed(0.04)) * image_count : param("size") == "2880x2880" ? tier("2K", fixed(0.06)) * image_count : tier("4K", fixed(0.08)) * image_count',
+    })
+    const tiers = getDynamicPricingTiers(model)
+    expect(tiers.map((tier) => tier.label)).toEqual(['1K', '2K', '4K'])
+    const options = {
+      ...getDynamicGroupRatios(model, 'default'),
+      tokenUnit: 'M' as const,
+      showCurrencySymbol: false,
+    }
+    expect(options.groupRatioMultiplier).toBe(0.11)
+    expect(
+      tiers.map((tier) => getDynamicPriceEntries(tier, options)[0].formatted)
+    ).toEqual(
+      [0.06, 0.09, 0.12].map((price) =>
+        formatTaskUsageUnitPrice(price, {
+          tokenUnit: 'M',
+          showCurrencySymbol: false,
+        })
+      )
+    )
+    expect(
+      getDynamicGroupRatios(model, 'standard').imageGroupRatioMultiplier
+    ).toBe(0.5)
+    expect(getDynamicGroupRatios(model, 'free').imageGroupRatioMultiplier).toBe(
+      0
+    )
+  })
+
   test('keeps request prices unchanged by token units and separates mixed billing units', () => {
     const model = pricingModel({
       billing_mode: 'tiered_expr',

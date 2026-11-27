@@ -80,6 +80,38 @@ function tokenConditions(node: ExpressionNode): TokenTierCondition[] | null {
   return conditions
 }
 
+function imageSizeCondition(node: ExpressionNode): string | null {
+  const sizes: string[] = []
+  for (const part of flattenBinary(node, '||')) {
+    if (
+      part.kind !== 'binary' ||
+      part.operator !== '==' ||
+      part.left.kind !== 'call' ||
+      part.left.name !== 'param' ||
+      part.left.args[0].kind !== 'literal' ||
+      part.left.args[0].value !== 'size' ||
+      part.right.kind !== 'literal' ||
+      typeof part.right.value !== 'string' ||
+      part.right.value.length === 0
+    ) {
+      return null
+    }
+    sizes.push(part.right.value)
+  }
+  return sizes.join(' / ')
+}
+
+function unwrapImageCount(node: ExpressionNode): ExpressionNode | null {
+  if (node.kind !== 'binary' || node.operator !== '*') return null
+  if (node.left.kind === 'variable' && node.left.name === 'image_count') {
+    return node.right
+  }
+  if (node.right.kind === 'variable' && node.right.name === 'image_count') {
+    return node.left
+  }
+  return null
+}
+
 function nonnegativePriceLiteral(node: ExpressionNode): number | null {
   if (
     node.kind === 'literal' &&
@@ -103,6 +135,11 @@ function tokenTier(
   node: ExpressionNode,
   conditions: TokenTierCondition[]
 ): TokenTier | null {
+  const imagePricing = unwrapImageCount(node)
+  if (imagePricing) {
+    const tier = tokenTier(imagePricing, conditions)
+    return tier && { ...tier, imageCount: true }
+  }
   if (
     node.kind !== 'call' ||
     node.name !== 'tier' ||
@@ -213,29 +250,30 @@ export function readTokenTierChain(node: ExpressionNode): TokenTier[] | null {
       }
     }
   }
-  if (node.kind === 'binary' && node.operator === '*') {
-    for (const [factor, pricing] of [
-      [node.left, node.right],
-      [node.right, node.left],
-    ]) {
-      if (factor.kind === 'variable' && factor.name === 'image_count') {
-        return (
-          readTokenTierChain(pricing)?.map((tier) => ({
-            ...tier,
-            imageCount: true,
-          })) ?? null
-        )
-      }
-    }
+  const imagePricing = unwrapImageCount(node)
+  if (imagePricing) {
+    return (
+      readTokenTierChain(imagePricing)?.map((tier) => ({
+        ...tier,
+        imageCount: true,
+      })) ?? null
+    )
   }
   const tiers: TokenTier[] = []
   let remaining = node
   while (remaining.kind === 'conditional') {
     const conditions = tokenConditions(remaining.condition)
-    if (!conditions) return null
-    const tier = tokenTier(remaining.yes, conditions)
-    if (!tier) return null
-    tiers.push(tier)
+    const sizeCondition = conditions
+      ? null
+      : imageSizeCondition(remaining.condition)
+    if (!conditions && sizeCondition === null) return null
+    const tier = tokenTier(remaining.yes, conditions ?? [])
+    if (!tier || (sizeCondition !== null && tier.billingUnit !== 'request')) {
+      return null
+    }
+    tiers.push(
+      sizeCondition === null ? tier : { ...tier, conditionText: sizeCondition }
+    )
     remaining = remaining.no
   }
   const fallback = tokenTier(remaining, [])

@@ -237,8 +237,14 @@ function BillingBreakdown(props: {
   const isUserGR = userGR != null && Number.isFinite(userGR) && userGR !== -1
   const effectiveGR = isUserGR ? userGR : other.group_ratio
   if (effectiveGR != null && Number.isFinite(effectiveGR)) {
+    let ratioLabel = t('Group Ratio')
+    if (other.image_group_ratio != null) {
+      ratioLabel = t('Image group ratio')
+    } else if (isUserGR) {
+      ratioLabel = t('User Exclusive Ratio')
+    }
     rows.push({
-      label: isUserGR ? t('User Exclusive Ratio') : t('Group Ratio'),
+      label: ratioLabel,
       value: `${formatRatio(effectiveGR)}x`,
     })
   }
